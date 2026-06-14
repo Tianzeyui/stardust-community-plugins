@@ -1,6 +1,6 @@
 # BrainPlus 社区插件
 
-BrainPlus 的社区插件集合。
+[BrainPlus](https://github.com/Tianzeyui/brainPlus) 的社区插件集合。
 
 ## 插件列表
 
@@ -13,7 +13,7 @@ BrainPlus 的社区插件集合。
 
 ## 使用方式
 
-将插件目录复制到 BrainPlus 的 `plugins/` 目录下即可使用。
+将插件目录复制到 [BrainPlus](https://github.com/Tianzeyui/brainPlus) 的 `plugins/` 目录下即可使用。
 
 ## 开发插件
 
