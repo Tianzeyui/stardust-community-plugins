@@ -1,6 +1,6 @@
 /**
  * 日记插件 — 挂载现有 DiaryPage 组件 + 注册 AI 工具
- * 工具通过 ctx.api.supabase 直接操作数据库，避免 import 别名问题
+ * AI 工具只提供只读访问，写入/编辑/删除仅限 UI 操作
  */
 export function register(ctx: any) {
   ctx.registerNav({ id: 'diary', label: '日记', icon: 'BookOpen', order: 60 })
@@ -14,73 +14,60 @@ export function register(ctx: any) {
       return client
     }
 
-    tools['diary_create'] = {
-      description: '创建或更新日记条目。指定日期和内容（支持 Markdown）。同一天重复调用会更新已有条目。',
+    // ====== 只读工具：时间线 ======
+    tools['diary_timeline'] = {
+      description:
+        '查看日记时间线，列出有日记记录的日期及标题。可用于快速了解用户的日记习惯和关注话题。' +
+        '不返回正文内容，需要详细内容时使用 diary_get。',
       inputSchema: {
         type: 'object',
         properties: {
-          date: { type: 'string', description: '日期，格式 YYYY-MM-DD' },
-          content: { type: 'string', description: '日记内容（Markdown）' },
-          title: { type: 'string', description: '日记标题（可选）' },
-          mood: { type: 'string', description: '心情标签（可选），如 开心/平静/焦虑' },
+          year: { type: 'number', description: '筛选年份（可选），如 2026' },
+          month: { type: 'number', description: '筛选月份 1-12（可选），需与 year 一起使用' },
         },
-        required: ['date', 'content'],
       },
-      execute: async (args: { date: string; content: string; title?: string; mood?: string }) => {
+      execute: async (args: { year?: number; month?: number }) => {
         try {
           const sb = getClient()
-          const { data: { user } } = await sb.auth.getUser()
-          if (!user) throw new Error('未登录')
-          const { error } = await sb.from('diary_entries').upsert(
-            { user_id: user.id, entry_date: args.date, content: args.content, title: args.title || '', mood: args.mood || '' },
-            { onConflict: 'user_id,entry_date' },
-          )
-          if (error) throw error
-          return `日记已保存：${args.date}${args.title ? `「${args.title}」` : ''}`
-        } catch (e: any) {
-          return `保存日记失败：${e.message}`
-        }
-      },
-    }
+          let query = sb.from('diary_entries')
+            .select('entry_date, title, mood')
+            .order('entry_date', { ascending: false })
 
-    tools['diary_search'] = {
-      description: '搜索或列出日记条目。可按日期范围筛选。',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          from: { type: 'string', description: '起始日期 YYYY-MM-DD（可选）' },
-          to: { type: 'string', description: '结束日期 YYYY-MM-DD（可选）' },
-          keyword: { type: 'string', description: '内容关键词（可选，客户端过滤）' },
-        },
-      },
-      execute: async (args: { from?: string; to?: string; keyword?: string }) => {
-        try {
-          const sb = getClient()
-          let query = sb.from('diary_entries').select('*').order('entry_date', { ascending: false })
-          if (args.from) query = query.gte('entry_date', args.from)
-          if (args.to) query = query.lte('entry_date', args.to)
+          if (args.year) {
+            const y = String(args.year)
+            if (args.month) {
+              const m = String(args.month).padStart(2, '0')
+              query = query.gte('entry_date', `${y}-${m}-01`).lt('entry_date', m === '12' ? `${Number(y) + 1}-01-01` : `${y}-${String(Number(m) + 1).padStart(2, '0')}-01`)
+            } else {
+              query = query.gte('entry_date', `${y}-01-01`).lt('entry_date', `${Number(y) + 1}-01-01`)
+            }
+          }
+
           const { data, error } = await query
           if (error) throw error
-          let entries = (data || []) as any[]
-          if (args.keyword) {
-            const kw = args.keyword.toLowerCase()
-            entries = entries.filter(e =>
-              (e.title || '').toLowerCase().includes(kw) ||
-              (e.content || '').toLowerCase().includes(kw)
-            )
+          const entries = (data || []) as any[]
+          if (entries.length === 0) {
+            const scope = args.year
+              ? args.month ? `${args.year}年${args.month}月` : `${args.year}年`
+              : ''
+            return scope ? `${scope}暂无日记记录。` : '暂无日记记录。'
           }
-          if (entries.length === 0) return '未找到匹配的日记条目。'
-          return entries.slice(0, 20).map((e: any) =>
-            `- **${e.entry_date}**${e.title ? ` ${e.title}` : ''}${e.mood ? ` [${e.mood}]` : ''}: ${(e.content || '(空)').slice(0, 100)}${(e.content?.length ?? 0) > 100 ? '...' : ''}`
-          ).join('\n') + (entries.length > 20 ? `\n... 共 ${entries.length} 条，仅显示前 20 条` : '')
+
+          const lines = entries.map((e: any) =>
+            `- **${e.entry_date}**${e.title ? ` — ${e.title}` : ''}${e.mood ? ` [${e.mood}]` : ''}`
+          )
+          return `${entries.length} 篇日记：\n${lines.join('\n')}`
         } catch (e: any) {
-          return `搜索日记失败：${e.message}`
+          return `获取日记时间线失败：${e.message}`
         }
       },
     }
 
+    // ====== 只读工具：查看详情 ======
     tools['diary_get'] = {
-      description: '获取指定日期的日记。',
+      description:
+        '获取指定日期的日记全文。先用 diary_timeline 查看有哪些日期有日记，再按日期读取详细内容。' +
+        '如果用户提到某个日期或事件，可以用此工具查看当天的日记。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -91,72 +78,18 @@ export function register(ctx: any) {
       execute: async (args: { date: string }) => {
         try {
           const sb = getClient()
-          const { data, error } = await sb.from('diary_entries').select('*').eq('entry_date', args.date).maybeSingle()
+          const { data, error } = await sb.from('diary_entries')
+            .select('*').eq('entry_date', args.date).maybeSingle()
           if (error) throw error
           if (!data) return `${args.date} 没有日记记录。`
           const e = data as any
-          return `## ${e.entry_date}${e.title ? ` ${e.title}` : ''}${e.mood ? ` [${e.mood}]` : ''}\n\n${e.content}`
+          return [
+            `## ${e.entry_date}${e.title ? ` — ${e.title}` : ''}${e.mood ? `  [${e.mood}]` : ''}`,
+            '',
+            e.content || '(空)',
+          ].join('\n')
         } catch (e: any) {
           return `获取日记失败：${e.message}`
-        }
-      },
-    }
-
-    tools['diary_update'] = {
-      description: '更新指定日期的日记内容。可部分更新（只改 title/content/mood）。',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          date: { type: 'string', description: '日期，格式 YYYY-MM-DD' },
-          content: { type: 'string', description: '新的日记内容（可选）' },
-          title: { type: 'string', description: '新的标题（可选）' },
-          mood: { type: 'string', description: '新的心情标签（可选）' },
-        },
-        required: ['date'],
-      },
-      execute: async (args: { date: string; content?: string; title?: string; mood?: string }) => {
-        try {
-          const sb = getClient()
-          const { data } = await sb.from('diary_entries').select('id').eq('entry_date', args.date).maybeSingle()
-          if (!data) return `${args.date} 没有日记记录，请使用 diary_create 创建。`
-          const patch: any = {}
-          if (args.content !== undefined) patch.content = args.content
-          if (args.title !== undefined) patch.title = args.title
-          if (args.mood !== undefined) patch.mood = args.mood
-          if (Object.keys(patch).length === 0) return '未指定任何要更新的字段。'
-          const { error } = await sb.from('diary_entries').update(patch).eq('id', (data as any).id)
-          if (error) throw error
-          return `已更新 ${args.date} 的日记。`
-        } catch (e: any) {
-          return `更新日记失败：${e.message}`
-        }
-      },
-    }
-
-    tools['diary_delete'] = {
-      description: '删除指定日期的日记条目。此操作不可撤销，请确认后再执行。',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          date: { type: 'string', description: '要删除的日记日期，格式 YYYY-MM-DD' },
-        },
-        required: ['date'],
-      },
-      execute: async (args: { date: string }) => {
-        try {
-          const sb = getClient()
-          const { data: { user } } = await sb.auth.getUser()
-          if (!user) throw new Error('未登录')
-          const { data, error: selectErr } = await sb.from('diary_entries')
-            .select('id, title').eq('user_id', user.id).eq('entry_date', args.date).maybeSingle()
-          if (selectErr) throw selectErr
-          if (!data) return `${args.date} 没有日记记录，无需删除。`
-          const { error } = await sb.from('diary_entries').delete().eq('id', data.id)
-          if (error) throw error
-          const label = (data as any).title ? `「${(data as any).title}」` : ''
-          return `✅ 已删除 ${args.date} ${label} 的日记。`
-        } catch (e: any) {
-          return `删除日记失败：${e.message}`
         }
       },
     }
