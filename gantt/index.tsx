@@ -7,9 +7,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { BarChart3, Plus, ChevronLeft, ChevronRight, X, Pencil, Trash2, Calendar, Flag, ZoomIn, ZoomOut, Loader2, AlertTriangle, GripHorizontal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 
 // ============================================================================
@@ -486,62 +484,70 @@ export function register(ctx: any) {
         setErrors(e); return Object.keys(e).length === 0
       }
 
+      const submit = () => {
+        if (!validate()) return
+        handleSave({ name: name.trim(), description: desc.trim(), startDate, ddl, status }, edit?.id)
+      }
+
       return (
         <div data-backdrop="true"
-          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-6"
+          className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-8"
           onClick={(ev) => { if ((ev.target as HTMLElement).dataset.backdrop === 'true') setDialog(null) }}
           onKeyDown={(ev) => { if (ev.key === 'Escape') setDialog(null) }}>
-          <div className="bg-card rounded-xl border border-border shadow-2xl w-[440px] max-h-[90vh] overflow-y-auto">
+          <div className="bg-card rounded-lg border border-border shadow-xl w-[360px] max-h-[90vh] overflow-y-auto">
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-              <h3 className="text-sm font-semibold">{dialog.mode === 'create' ? '新增工作' : '编辑工作'}</h3>
-              <button className="h-6 w-6 rounded hover:bg-accent flex items-center justify-center" onClick={() => setDialog(null)}><X className="h-4 w-4 text-muted-foreground" /></button>
+            <div className="flex items-center justify-between px-5 py-3 border-b border-border/50">
+              <h3 className="text-[13px] font-semibold">{dialog.mode === 'create' ? '新增工作' : '编辑工作'}</h3>
+              <button className="h-5 w-5 rounded hover:bg-muted flex items-center justify-center" onClick={() => setDialog(null)}><X className="h-3.5 w-3.5 text-muted-foreground" /></button>
             </div>
             {/* Body */}
-            <div className="px-6 py-5 space-y-4">
-              <div className="space-y-2">
-                <Label>任务名称</Label>
-                <Input placeholder="输入任务名称" value={name}
+            <div className="px-5 py-4 space-y-3.5">
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-medium text-muted-foreground">任务名称</span>
+                <input
+                  placeholder="输入任务名称" value={name}
                   onChange={(e: any) => { setName(e.target.value); setErrors(prev => ({ ...prev, name: '' })) }}
-                  className={cn('h-9 text-sm', errors.name && 'border-destructive')} autoFocus
-                  onKeyDown={(e: any) => { if (e.key === 'Enter') { if (!validate()) return; handleSave({ name: name.trim(), description: desc.trim(), startDate, ddl, status }, edit?.id) } }} />
-                {errors.name && <p className="text-[11px] text-destructive mt-1">{errors.name}</p>}
+                  className={cn('w-full h-8 rounded-md border bg-background px-2.5 text-xs outline-none focus:ring-1 focus:ring-ring', errors.name ? 'border-destructive' : 'border-input')}
+                  autoFocus
+                  onKeyDown={(e: any) => { if (e.key === 'Enter') submit() }} />
+                {errors.name && <p className="text-[10px] text-destructive">{errors.name}</p>}
               </div>
-              <div className="space-y-2">
-                <Label>描述</Label>
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-medium text-muted-foreground">描述</span>
                 <textarea placeholder="任务描述（可选）" value={desc} onChange={(e: any) => setDesc(e.target.value)} rows={2}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-ring resize-none" />
+                  className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/40 outline-none focus:ring-1 focus:ring-ring resize-none" />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>开始日期</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-medium text-muted-foreground">开始</span>
                   <input type="date" value={startDate} onChange={(e: any) => setStartDate(e.target.value)}
-                    className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring" />
+                    className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs outline-none focus:ring-1 focus:ring-ring" />
                 </div>
-                <div className="space-y-2">
-                  <Label>截止日期</Label>
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-medium text-muted-foreground">截止</span>
                   <input type="date" value={ddl}
                     onChange={(e: any) => { setDdl(e.target.value); setErrors(prev => ({ ...prev, ddl: '' })) }}
-                    className={cn('w-full h-9 rounded-md border bg-background px-3 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring', errors.ddl ? 'border-destructive' : 'border-input')} />
-                  {errors.ddl && <p className="text-[11px] text-destructive mt-1">{errors.ddl}</p>}
+                    className={cn('w-full h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-1 focus:ring-ring', errors.ddl ? 'border-destructive' : 'border-input')} />
+                  {errors.ddl && <p className="text-[10px] text-destructive">{errors.ddl}</p>}
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label>状态</Label>
-                <div className="flex gap-2">
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-medium text-muted-foreground">状态</span>
+                <div className="flex gap-1.5">
                   {(['pending', 'in-progress', 'completed'] as Task['status'][]).map(s => (
                     <button key={s} type="button"
-                      className={cn('flex-1 h-9 rounded-md text-[12px] font-medium border transition-colors', status === s ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-muted-foreground border-input hover:bg-accent')}
+                      className={cn('flex-1 h-7 rounded text-[11px] font-medium border transition-colors', status === s ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-muted-foreground border-input hover:bg-accent')}
                       onClick={() => setStatus(s)}>{STATUS_LABELS[s]}</button>
                   ))}
                 </div>
               </div>
             </div>
             {/* Footer */}
-            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border bg-muted/30 rounded-b-xl">
-              <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setDialog(null)} disabled={saving}>取消</Button>
-              <Button size="sm" className="h-8 text-xs min-w-[60px]" onClick={() => { if (!validate()) return; handleSave({ name: name.trim(), description: desc.trim(), startDate, ddl, status }, edit?.id) }} disabled={saving}>
-                {saving ? <><Loader2 className="h-3 w-3 animate-spin mr-1" />保存中…</> : dialog.mode === 'create' ? '创建' : '保存'}
+            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border/50 bg-muted/20 rounded-b-lg">
+              <Button variant="ghost" size="sm" className="h-7 text-[11px] px-3" onClick={() => setDialog(null)} disabled={saving}>取消</Button>
+              <Button size="sm" className="h-7 text-[11px] px-4" onClick={submit} disabled={saving}>
+                {saving && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+                {saving ? '保存中…' : dialog.mode === 'create' ? '创建' : '保存'}
               </Button>
             </div>
           </div>
