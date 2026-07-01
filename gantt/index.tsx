@@ -489,61 +489,72 @@ export function register(ctx: any) {
         handleSave({ name: name.trim(), description: desc.trim(), startDate, ddl, status }, edit?.id)
       }
 
+      const inputCls = (hasErr: boolean) =>
+        `w-full rounded-md border bg-background px-3 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring ${hasErr ? 'border-destructive' : 'border-input'}`
+
       return (
         <div data-backdrop="true"
-          className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-8"
+          style={{ position: 'fixed', inset: 0, zIndex: 50, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 32 }}
           onClick={(ev) => { if ((ev.target as HTMLElement).dataset.backdrop === 'true') setDialog(null) }}
           onKeyDown={(ev) => { if (ev.key === 'Escape') setDialog(null) }}>
-          <div className="bg-card rounded-lg border border-border shadow-xl w-[360px] max-h-[90vh] overflow-y-auto">
+          <div style={{ backgroundColor: 'var(--card)', borderRadius: 10, border: '1px solid var(--border)', boxShadow: '0 10px 40px rgba(0,0,0,0.2)', width: 380, maxHeight: '90vh', overflowY: 'auto' }}>
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-3 border-b border-border/50">
-              <h3 className="text-[13px] font-semibold">{dialog.mode === 'create' ? '新增工作' : '编辑工作'}</h3>
-              <button className="h-5 w-5 rounded hover:bg-muted flex items-center justify-center" onClick={() => setDialog(null)}><X className="h-3.5 w-3.5 text-muted-foreground" /></button>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 24px', borderBottom: '1px solid var(--border)' }}>
+              <h3 style={{ fontSize: 13, fontWeight: 600, margin: 0 }}>{dialog.mode === 'create' ? '新增工作' : '编辑工作'}</h3>
+              <button style={{ width: 20, height: 20, borderRadius: 4, border: 'none', background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setDialog(null)}><X size={14} color="var(--muted-foreground)" /></button>
             </div>
             {/* Body */}
-            <div className="px-6 py-4 space-y-3.5">
-              <div className="space-y-1.5">
-                <span className="text-[11px] font-medium text-muted-foreground">任务名称</span>
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--muted-foreground)' }}>任务名称</span>
                 <input
                   placeholder="输入任务名称" value={name}
                   onChange={(e: any) => { setName(e.target.value); setErrors(prev => ({ ...prev, name: '' })) }}
-                  className={cn('w-full h-8 rounded-md border bg-background px-2.5 text-xs outline-none focus:ring-1 focus:ring-ring', errors.name ? 'border-destructive' : 'border-input')}
+                  className={inputCls(!!errors.name)}
                   autoFocus
                   onKeyDown={(e: any) => { if (e.key === 'Enter') submit() }} />
-                {errors.name && <p className="text-[10px] text-destructive">{errors.name}</p>}
+                {errors.name && <span style={{ fontSize: 10, color: 'var(--destructive)' }}>{errors.name}</span>}
               </div>
-              <div className="space-y-1.5">
-                <span className="text-[11px] font-medium text-muted-foreground">描述</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--muted-foreground)' }}>描述</span>
                 <textarea placeholder="任务描述（可选）" value={desc} onChange={(e: any) => setDesc(e.target.value)} rows={2}
-                  className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/40 outline-none focus:ring-1 focus:ring-ring resize-none" />
+                  className={inputCls(false)} style={{ resize: 'vertical' }} />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <span className="text-[11px] font-medium text-muted-foreground">开始</span>
-                  <input type="date" value={startDate} onChange={(e: any) => setStartDate(e.target.value)}
-                    className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs outline-none focus:ring-1 focus:ring-ring" />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--muted-foreground)' }}>开始</span>
+                  <input type="date" value={startDate} onChange={(e: any) => setStartDate(e.target.value)} className={inputCls(false)} />
                 </div>
-                <div className="space-y-1.5">
-                  <span className="text-[11px] font-medium text-muted-foreground">截止</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--muted-foreground)' }}>截止</span>
                   <input type="date" value={ddl}
                     onChange={(e: any) => { setDdl(e.target.value); setErrors(prev => ({ ...prev, ddl: '' })) }}
-                    className={cn('w-full h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-1 focus:ring-ring', errors.ddl ? 'border-destructive' : 'border-input')} />
-                  {errors.ddl && <p className="text-[10px] text-destructive">{errors.ddl}</p>}
+                    className={inputCls(!!errors.ddl)} />
+                  {errors.ddl && <span style={{ fontSize: 10, color: 'var(--destructive)' }}>{errors.ddl}</span>}
                 </div>
               </div>
-              <div className="space-y-1.5">
-                <span className="text-[11px] font-medium text-muted-foreground">状态</span>
-                <div className="flex gap-1.5">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--muted-foreground)' }}>状态</span>
+                <div style={{ display: 'flex', gap: 6 }}>
                   {(['pending', 'in-progress', 'completed'] as Task['status'][]).map(s => (
                     <button key={s} type="button"
-                      className={cn('flex-1 h-7 rounded text-[11px] font-medium border transition-colors', status === s ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-muted-foreground border-input hover:bg-accent')}
-                      onClick={() => setStatus(s)}>{STATUS_LABELS[s]}</button>
+                      onClick={() => setStatus(s)}
+                      style={{
+                        flex: 1, height: 28, borderRadius: 6, fontSize: 11, fontWeight: 500, border: '1px solid',
+                        cursor: 'pointer', transition: 'all 0.15s',
+                        ...(status === s ? {
+                          backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)', borderColor: 'var(--primary)',
+                        } : {
+                          backgroundColor: 'var(--background)', color: 'var(--muted-foreground)', borderColor: 'var(--input)',
+                        }),
+                      }}
+                    >{STATUS_LABELS[s]}</button>
                   ))}
                 </div>
               </div>
             </div>
             {/* Footer */}
-            <div className="flex items-center justify-end gap-2 px-6 py-3 border-t border-border/50 bg-muted/20 rounded-b-lg">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, padding: '14px 24px', borderTop: '1px solid var(--border)', borderBottomLeftRadius: 10, borderBottomRightRadius: 10 }}>
               <Button variant="ghost" size="sm" className="h-7 text-[11px] px-3" onClick={() => setDialog(null)} disabled={saving}>取消</Button>
               <Button size="sm" className="h-7 text-[11px] px-4" onClick={submit} disabled={saving}>
                 {saving && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
