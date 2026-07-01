@@ -22,20 +22,14 @@ interface Task {
   description: string
   startDate: string
   ddl: string
-  color: string
+  color: string       // key into COLOR_HEX
   status: 'pending' | 'in-progress' | 'completed'
   createdAt: string
 }
 
 interface TaskRow {
-  id: string
-  user_id: string
-  name: string
-  description: string
-  start_date: string
-  ddl: string
-  color: string
-  status: string
+  id: string; user_id: string; name: string; description: string
+  start_date: string; ddl: string; color: string; status: string
   created_at: string
 }
 
@@ -45,32 +39,39 @@ interface DialogState {
   defaultStartDate?: string
 }
 
-interface ContextMenuState {
-  x: number
-  y: number
-  date: string
-}
-
-interface TooltipState {
-  task: Task
-  x: number
-  y: number
-}
+interface ContextMenuState { x: number; y: number; date: string }
+interface TooltipState { task: Task; x: number; y: number }
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-const DAY_WIDTH = 56
 const ROW_HEIGHT = 42
 const MIN_BAR_WIDTH = 4
 const TOOLTIP_DELAY = 300
 const TABLE_NAME = 'gantt_tasks'
+const LEFT_WIDTH = 200
+const DEFAULT_DAY_WIDTH = 56
 
-const COLORS = [
-  'bg-chart-1', 'bg-chart-2', 'bg-chart-3', 'bg-chart-4', 'bg-chart-5',
-  'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500', 'bg-pink-500',
+// Color keys (stored in DB) → hex values (used as inline styles to avoid Tailwind purge issues)
+const COLOR_KEYS = [
+  'chart-1', 'chart-2', 'chart-3', 'chart-4', 'chart-5',
+  'blue', 'green', 'purple', 'orange', 'pink',
 ]
+
+const COLOR_HEX: Record<string, string> = {
+  'chart-1': '#4cc9f0', 'chart-2': '#4895ef', 'chart-3': '#f72585',
+  'chart-4': '#f77f00', 'chart-5': '#06d6a0',
+  'blue': '#3b82f6', 'green': '#22c55e', 'purple': '#a855f7',
+  'orange': '#f97316', 'pink': '#ec4899',
+}
+
+const COLOR_BG: Record<string, string> = {
+  'chart-1': 'bg-chart-1', 'chart-2': 'bg-chart-2', 'chart-3': 'bg-chart-3',
+  'chart-4': 'bg-chart-4', 'chart-5': 'bg-chart-5',
+  'blue': 'bg-blue-500', 'green': 'bg-green-500', 'purple': 'bg-purple-500',
+  'orange': 'bg-orange-500', 'pink': 'bg-pink-500',
+}
 
 const STATUS_LABELS: Record<Task['status'], string> = {
   'pending': '待开始', 'in-progress': '进行中', 'completed': '已完成',
@@ -104,24 +105,14 @@ function diffDays(a: Date, b: Date): number {
   return Math.round((va - vb) / 86400000)
 }
 
-function isToday(d: Date): boolean {
-  return formatDate(d) === formatDate(new Date())
-}
-
-function isWeekend(d: Date): boolean {
-  const day = d.getDay()
-  return day === 0 || day === 6
-}
-
-function isMonday(d: Date): boolean {
-  return d.getDay() === 1
-}
+function isToday(d: Date): boolean { return formatDate(d) === formatDate(new Date()) }
+function isWeekend(d: Date): boolean { const day = d.getDay(); return day === 0 || day === 6 }
+function isMonday(d: Date): boolean { return d.getDay() === 1 }
 
 function getMonday(d: Date): Date {
   const date = new Date(d)
   const day = date.getDay()
-  const diff = day === 0 ? -6 : 1 - day
-  date.setDate(date.getDate() + diff)
+  date.setDate(date.getDate() + (day === 0 ? -6 : 1 - day))
   return date
 }
 
@@ -131,14 +122,9 @@ function clamp(val: number, min: number, max: number): number {
 
 function rowToTask(r: TaskRow): Task {
   return {
-    id: r.id,
-    name: r.name,
-    description: r.description || '',
-    startDate: r.start_date,
-    ddl: r.ddl,
-    color: r.color,
-    status: r.status as Task['status'],
-    createdAt: r.created_at,
+    id: r.id, name: r.name, description: r.description || '',
+    startDate: r.start_date, ddl: r.ddl, color: r.color,
+    status: r.status as Task['status'], createdAt: r.created_at,
   }
 }
 
@@ -163,36 +149,22 @@ export function register(ctx: any) {
     const [loadError, setLoadError] = useState('')
     const [saving, setSaving] = useState(false)
     const [supabaseOk, setSupabaseOk] = useState(true)
-    const [daysToShow, setDaysToShow] = useState(21)
+    const [dayWidth, setDayWidth] = useState(DEFAULT_DAY_WIDTH)   // zoom: changes column width
     const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
     const [tooltip, setTooltip] = useState<TooltipState | null>(null)
     const [dialog, setDialog] = useState<DialogState | null>(null)
-
-    // Anchor date: fixed, never changes after mount
-    const anchorDateRef = useRef<Date>(getMonday(new Date()))
 
     const scrollRef = useRef<HTMLDivElement>(null)
     const tooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const tooltipDismissRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const contextMenuRef = useRef<HTMLDivElement>(null)
     const tooltipRef = useRef<HTMLDivElement>(null)
-    const titleBarHeight = 41
+
+    // Anchor date: fixed, never changes
+    const anchorRef = useRef<Date>(getMonday(new Date()))
+    const anchor = anchorRef.current
 
     // ---- Derived ----
-    const anchorDate = anchorDateRef.current
-
-    // Total grid days: cover all tasks (from anchor to latest ddl + 14 days padding), minimum = daysToShow
-    const totalDays = useMemo(() => {
-      if (tasks.length === 0) return daysToShow
-      let latest = anchorDate
-      tasks.forEach(t => {
-        const d = parseDate(t.ddl)
-        if (d > latest) latest = d
-      })
-      const fromAnchor = diffDays(latest, anchorDate) + 1 + 14
-      return Math.max(daysToShow, fromAnchor)
-    }, [tasks, daysToShow, anchorDate])
-
     const sortedTasks = useMemo(() =>
       [...tasks].sort((a, b) => {
         if (a.startDate !== b.startDate) return a.startDate < b.startDate ? -1 : 1
@@ -200,69 +172,54 @@ export function register(ctx: any) {
       }),
     [tasks])
 
-    // Day offset for a date relative to anchor
-    const dayOffset = useCallback((dateStr: string) => {
-      return diffDays(parseDate(dateStr), anchorDate)
-    }, [anchorDate])
+    // Total grid days: cover anchor → latest ddl + 14d padding, at least 21
+    const totalDays = useMemo(() => {
+      if (tasks.length === 0) return 21
+      let latest = anchor
+      tasks.forEach(t => {
+        const d = parseDate(t.ddl)
+        if (d > latest) latest = d
+      })
+      return Math.max(21, diffDays(latest, anchor) + 1 + 14)
+    }, [tasks, anchor])
 
     // ---- Load tasks ----
     const loadTasks = useCallback(async () => {
-      setLoading(true)
-      setLoadError('')
+      setLoading(true); setLoadError('')
       try {
         const sb = getClient()
         const { data, error } = await sb.from(TABLE_NAME).select('*').order('start_date', { ascending: true })
         if (error) throw error
         setTasks((data as TaskRow[]).map(rowToTask))
       } catch (e: any) {
-        if (e.message === 'Supabase 未配置') {
-          setSupabaseOk(false)
-          setLoadError('请先在设置中配置 Supabase 连接')
-        } else {
-          setLoadError(e.message || '加载任务失败')
-        }
-      } finally {
-        setLoading(false)
-        setLoaded(true)
-      }
+        if (e.message === 'Supabase 未配置') { setSupabaseOk(false); setLoadError('请先在设置中配置 Supabase 连接') }
+        else setLoadError(e.message || '加载任务失败')
+      } finally { setLoading(false); setLoaded(true) }
     }, [])
 
     useEffect(() => {
-      if (!supabase?.isConfigured()) {
-        setSupabaseOk(false)
-        setLoadError('请先在设置中配置 Supabase 连接')
-        setLoading(false)
-        setLoaded(true)
-        return
-      }
+      if (!supabase?.isConfigured()) { setSupabaseOk(false); setLoadError('请先在设置中配置 Supabase 连接'); setLoading(false); setLoaded(true); return }
       loadTasks()
     }, [supabase, loadTasks])
 
-    // Scroll to today on mount
+    // Scroll today into view
     useEffect(() => {
       if (loaded && scrollRef.current) {
-        const todayOffset = diffDays(new Date(), anchorDate)
-        if (todayOffset >= 0) {
-          scrollRef.current.scrollLeft = Math.max(0, todayOffset * DAY_WIDTH - 80)
-        }
+        const offset = diffDays(new Date(), anchor)
+        if (offset >= 0) scrollRef.current.scrollLeft = Math.max(0, offset * DEFAULT_DAY_WIDTH - 80)
       }
-    }, [loaded, anchorDate])
+    }, [loaded, anchor])
 
     // ---- Context menu dismiss ----
     useEffect(() => {
       if (!contextMenu) return
       const dismiss = () => setContextMenu(null)
-      const handleClick = (e: MouseEvent) => {
-        if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) dismiss()
-      }
-      document.addEventListener('mousedown', handleClick)
-      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') dismiss() })
+      const h = (e: MouseEvent) => { if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) dismiss() }
+      const k = (e: KeyboardEvent) => { if (e.key === 'Escape') dismiss() }
+      document.addEventListener('mousedown', h)
+      document.addEventListener('keydown', k)
       window.addEventListener('scroll', dismiss, true)
-      return () => {
-        document.removeEventListener('mousedown', handleClick)
-        document.removeEventListener('keydown', () => {})
-        window.removeEventListener('scroll', dismiss, true)
-      }
+      return () => { document.removeEventListener('mousedown', h); document.removeEventListener('keydown', k); window.removeEventListener('scroll', dismiss, true) }
     }, [contextMenu])
 
     // ---- Tooltip dismiss on scroll ----
@@ -273,21 +230,19 @@ export function register(ctx: any) {
       return () => window.removeEventListener('scroll', dismiss, true)
     }, [tooltip])
 
-    // ---- Right-click: calculate date from click position ----
+    // ---- Right-click → date from pixel ----
     const handleContextMenu = useCallback((e: React.MouseEvent) => {
       e.preventDefault()
-      const container = scrollRef.current
-      if (!container) return
-      const rect = container.getBoundingClientRect()
-      const clickX = e.clientX - rect.left + container.scrollLeft - 200 // 200 = left panel width
-      const dayIdx = Math.max(0, Math.floor(clickX / DAY_WIDTH))
-      const d = new Date(anchorDate)
-      d.setDate(d.getDate() + dayIdx)
+      const el = scrollRef.current; if (!el) return
+      const r = el.getBoundingClientRect()
+      const px = e.clientX - r.left + el.scrollLeft - LEFT_WIDTH
+      const idx = Math.max(0, Math.floor(px / dayWidth))
+      const d = new Date(anchor); d.setDate(d.getDate() + idx)
       let mx = e.clientX, my = e.clientY
       if (mx + 170 > window.innerWidth) mx = window.innerWidth - 175
       if (my + 50 > window.innerHeight) my = window.innerHeight - 55
       setContextMenu({ x: mx, y: my, date: formatDate(d) })
-    }, [anchorDate])
+    }, [anchor, dayWidth])
 
     // ---- CRUD ----
     const handleSave = useCallback(async (data: Omit<Task, 'id' | 'createdAt' | 'color'>, editId?: string) => {
@@ -296,38 +251,34 @@ export function register(ctx: any) {
         const sb = getClient()
         if (editId) {
           const { error } = await sb.from(TABLE_NAME).update({
-            name: data.name, description: data.description,
-            start_date: data.startDate, ddl: data.ddl, status: data.status,
+            name: data.name, description: data.description, start_date: data.startDate, ddl: data.ddl, status: data.status,
           }).eq('id', editId)
           if (error) throw error
           setTasks(prev => prev.map(t => t.id === editId ? { ...t, ...data } : t))
           ui.toast('任务已更新', 'success')
         } else {
-          const colorCounts = new Map<string, number>()
-          COLORS.forEach(c => colorCounts.set(c, 0))
-          tasks.forEach(t => colorCounts.set(t.color, (colorCounts.get(t.color) || 0) + 1))
-          let bestColor = COLORS[0]; let bestCount = Infinity
-          colorCounts.forEach((cnt, col) => { if (cnt < bestCount) { bestCount = cnt; bestColor = col } })
+          // Pick least-used color
+          const cnt = new Map<string, number>(); COLOR_KEYS.forEach(c => cnt.set(c, 0))
+          tasks.forEach(t => cnt.set(t.color, (cnt.get(t.color) || 0) + 1))
+          let best = COLOR_KEYS[0], bestN = Infinity
+          cnt.forEach((n, c) => { if (n < bestN) { bestN = n; best = c } })
 
-          const { data: inserted, error } = await sb.from(TABLE_NAME).insert({
-            name: data.name, description: data.description,
-            start_date: data.startDate, ddl: data.ddl,
-            color: bestColor, status: data.status,
+          const { data: row, error } = await sb.from(TABLE_NAME).insert({
+            name: data.name, description: data.description, start_date: data.startDate, ddl: data.ddl,
+            color: best, status: data.status,
           }).select().single()
           if (error) throw error
-          setTasks(prev => [...prev, rowToTask(inserted as TaskRow)])
+          setTasks(prev => [...prev, rowToTask(row as TaskRow)])
           ui.toast('任务已创建', 'success')
         }
         setDialog(null)
-      } catch (e: any) {
-        ui.toast('保存失败: ' + (e.message || 'unknown'), 'error')
-      } finally { setSaving(false) }
+      } catch (e: any) { ui.toast('保存失败: ' + (e.message || 'unknown'), 'error') }
+      finally { setSaving(false) }
     }, [tasks, ui])
 
     const handleDelete = useCallback(async (taskId: string) => {
       const result = await confirm({
-        title: '删除任务',
-        message: '确定要删除这个任务吗？此操作不可撤销。',
+        title: '删除任务', message: '确定要删除这个任务吗？此操作不可撤销。',
         actions: [{ key: 'ok', label: '确认删除', variant: 'destructive' }, { key: 'cancel', label: '取消' }],
       })
       if (result !== 'ok') return
@@ -338,9 +289,7 @@ export function register(ctx: any) {
         setTasks(prev => prev.filter(t => t.id !== taskId))
         setTooltip(null)
         ui.toast('任务已删除', 'info')
-      } catch (e: any) {
-        ui.toast('删除失败: ' + (e.message || 'unknown'), 'error')
-      }
+      } catch (e: any) { ui.toast('删除失败: ' + (e.message || 'unknown'), 'error') }
     }, [confirm, ui])
 
     // ---- Tooltip handlers ----
@@ -349,20 +298,19 @@ export function register(ctx: any) {
       if (tooltipDismissRef.current) clearTimeout(tooltipDismissRef.current)
       tooltipTimerRef.current = setTimeout(() => {
         const rect = el.getBoundingClientRect()
-        const tw = 280, th = 200
+        const tw = 280, th = 180
         let tx = rect.left + rect.width / 2 - tw / 2
         let ty = rect.top - th - 8
         if (ty < 8) ty = rect.bottom + 8
-        if (tx < 8) tx = 8
-        if (tx + tw > window.innerWidth) tx = window.innerWidth - tw - 8
-        if (ty + th > window.innerHeight) ty = window.innerHeight - th - 8
+        tx = clamp(tx, 8, window.innerWidth - tw - 8)
+        ty = clamp(ty, 8, window.innerHeight - th - 8)
         setTooltip({ task, x: tx, y: ty })
       }, TOOLTIP_DELAY)
     }, [])
 
     const hideTooltip = useCallback(() => {
       if (tooltipTimerRef.current) clearTimeout(tooltipTimerRef.current)
-      tooltipDismissRef.current = setTimeout(() => setTooltip(null), 200)
+      tooltipDismissRef.current = setTimeout(() => setTooltip(null), 250)
     }, [])
 
     const cancelHideTooltip = useCallback(() => {
@@ -372,21 +320,16 @@ export function register(ctx: any) {
     // ---- Navigation ----
     const goToday = useCallback(() => {
       if (scrollRef.current) {
-        const offset = diffDays(new Date(), anchorDate)
-        scrollRef.current.scrollTo({ left: Math.max(0, offset * DAY_WIDTH - 100), behavior: 'smooth' })
+        const offset = diffDays(new Date(), anchor)
+        scrollRef.current.scrollTo({ left: Math.max(0, offset * dayWidth - 100), behavior: 'smooth' })
       }
-    }, [anchorDate])
+    }, [anchor, dayWidth])
 
-    const panLeft = useCallback(() => {
-      if (scrollRef.current) scrollRef.current.scrollBy({ left: -400, behavior: 'smooth' })
-    }, [])
+    const panLeft  = useCallback(() => { scrollRef.current?.scrollBy({ left: -400, behavior: 'smooth' }) }, [])
+    const panRight = useCallback(() => { scrollRef.current?.scrollBy({ left: 400, behavior: 'smooth' }) }, [])
 
-    const panRight = useCallback(() => {
-      if (scrollRef.current) scrollRef.current.scrollBy({ left: 400, behavior: 'smooth' })
-    }, [])
-
-    const zoomIn = useCallback(() => setDaysToShow(d => clamp(d - 7, 7, 42)), [])
-    const zoomOut = useCallback(() => setDaysToShow(d => clamp(d + 7, 7, 42)), [])
+    const zoomIn  = useCallback(() => setDayWidth(d => clamp(d + 8, 28, 100)), [])
+    const zoomOut = useCallback(() => setDayWidth(d => clamp(d - 8, 28, 100)), [])
 
     // =====================================================================
     // Render states
@@ -406,9 +349,7 @@ export function register(ctx: any) {
         <div className="h-full flex flex-col items-center justify-center gap-3 p-8">
           <AlertTriangle className="h-8 w-8 text-muted-foreground/40" />
           <p className="text-sm text-muted-foreground">{loadError}</p>
-          <p className="text-[11px] text-muted-foreground/50 max-w-xs text-center">
-            甘特图插件需要 Supabase 存储任务数据。请在设置 → 能力中配置 Supabase 连接。
-          </p>
+          <p className="text-[11px] text-muted-foreground/50 text-center max-w-xs">甘特图插件需要 Supabase 存储任务数据。请在设置 → 能力中配置 Supabase 连接。</p>
           <Button variant="outline" size="sm" className="h-8 text-xs mt-2" onClick={loadTasks}>重试</Button>
         </div>
       )
@@ -418,133 +359,112 @@ export function register(ctx: any) {
     // Sub-components
     // =====================================================================
 
-    const TimelineHeader = () => (
-      <div
-        className="sticky top-0 z-10 bg-card flex border-b border-border"
-        style={{ width: totalDays * DAY_WIDTH, minWidth: '100%' }}
-      >
-        {Array.from({ length: totalDays }, (_, i) => {
-          const d = new Date(anchorDate)
-          d.setDate(d.getDate() + i)
-          const today = isToday(d)
-          const weekend = isWeekend(d)
-          const mon = isMonday(d)
-          return (
-            <div
-              key={i}
-              className={cn(
-                'flex flex-col items-center justify-center shrink-0 border-r',
-                mon ? 'border-r-border/40' : 'border-r-border/15',
-                today ? 'bg-primary/10' : weekend ? 'bg-muted/30' : '',
-              )}
-              style={{ width: DAY_WIDTH, height: 34 }}
-            >
-              <span className={cn('text-[10px] leading-tight', today ? 'text-primary font-semibold' : weekend ? 'text-muted-foreground' : 'text-foreground')}>
-                {d.getMonth() + 1}/{d.getDate()}
-              </span>
-              <span className={cn('text-[9px] leading-tight', today ? 'text-primary/60' : 'text-muted-foreground/50')}>
-                {WEEKDAY_LABELS[d.getDay()]}
-              </span>
-            </div>
-          )
-        })}
-      </div>
-    )
-
-    const TaskBar = ({ task }: { task: Task }) => {
-      const left = dayOffset(task.startDate) * DAY_WIDTH
-      const barW = Math.max((diffDays(parseDate(task.ddl), parseDate(task.startDate)) + 1) * DAY_WIDTH, MIN_BAR_WIDTH)
-      const overdue = parseDate(task.ddl) < new Date() && task.status !== 'completed'
-      const isShort = barW < 60
-
+    const TimelineHeader = () => {
+      const w = totalDays * dayWidth
       return (
-        <div
-          className={cn(
-            'absolute rounded flex items-center gap-1 cursor-pointer transition-shadow hover:shadow-lg group',
-            task.color,
-            task.status === 'completed' ? 'opacity-50' : '',
-            overdue ? 'ring-2 ring-destructive ring-offset-1 ring-offset-background' : '',
-          )}
-          style={{ left, top: 5, width: barW, height: ROW_HEIGHT - 10, minWidth: MIN_BAR_WIDTH }}
-          onMouseEnter={(e) => showTooltip(task, e.currentTarget as HTMLElement)}
-          onMouseLeave={hideTooltip}
-        >
-          {!isShort && (
-            <span className={cn('text-[11px] text-white font-medium truncate px-2', task.status === 'completed' ? 'line-through opacity-70' : '')}>
-              {task.name}
-            </span>
-          )}
-          {isShort && barW > 10 && <div className="w-full h-full" />}
+        <div className="sticky top-0 z-10 bg-card flex border-b border-border" style={{ width: w }}>
+          {Array.from({ length: totalDays }, (_, i) => {
+            const d = new Date(anchor); d.setDate(d.getDate() + i)
+            const today = isToday(d)
+            return (
+              <div key={i}
+                className={cn('flex flex-col items-center justify-center shrink-0 border-r border-r-border/20', today && 'bg-primary/10', isWeekend(d) && !today && 'bg-muted/30')}
+                style={{ width: dayWidth, height: 34 }}>
+                <span className={cn('text-[10px] leading-tight', today ? 'text-primary font-semibold' : isWeekend(d) ? 'text-muted-foreground' : 'text-foreground')}>
+                  {d.getMonth() + 1}/{d.getDate()}
+                </span>
+                <span className={cn('text-[9px] leading-tight', today ? 'text-primary/60' : 'text-muted-foreground/50')}>
+                  {WEEKDAY_LABELS[d.getDay()]}
+                </span>
+              </div>
+            )
+          })}
         </div>
       )
     }
 
-    const LEFT_WIDTH = 200
+    const TaskBar = ({ task }: { task: Task }) => {
+      const start = parseDate(task.startDate)
+      const end = parseDate(task.ddl)
+      const left = diffDays(start, anchor) * dayWidth
+      const barW = Math.max((diffDays(end, start) + 1) * dayWidth, MIN_BAR_WIDTH)
+      const overdue = parseDate(task.ddl) < new Date() && task.status !== 'completed'
+      const hex = COLOR_HEX[task.color] || '#4895ef'
+
+      return (
+        <div
+          className={cn('absolute rounded flex items-center gap-1 cursor-pointer transition-shadow hover:shadow-lg group', overdue && 'ring-2 ring-destructive ring-offset-1 ring-offset-background')}
+          style={{
+            left, top: 5, width: barW, height: ROW_HEIGHT - 10, minWidth: MIN_BAR_WIDTH,
+            backgroundColor: hex, opacity: task.status === 'completed' ? 0.45 : 1,
+          }}
+          onMouseEnter={(e) => showTooltip(task, e.currentTarget as HTMLElement)}
+          onMouseLeave={hideTooltip}
+        >
+          {barW > 60 && (
+            <span className={cn('text-[11px] text-white font-medium truncate px-2', task.status === 'completed' && 'line-through')}>
+              {task.name}
+            </span>
+          )}
+        </div>
+      )
+    }
 
     const TimelineBody = () => (
-      <div style={{ width: totalDays * DAY_WIDTH }} onContextMenu={handleContextMenu}>
+      <div style={{ width: totalDays * dayWidth }} onContextMenu={handleContextMenu}>
         {sortedTasks.length === 0 ? (
-          <div
-            className="flex items-center justify-center text-xs text-muted-foreground/40 select-none"
-            style={{ height: ROW_HEIGHT }}
-          >
-            右键此处新增工作
-          </div>
+          <div className="flex items-center justify-center text-xs text-muted-foreground/40 select-none border-b border-border/20" style={{ height: ROW_HEIGHT }}>右键此处新增工作</div>
         ) : (
           sortedTasks.map(task => (
-            <div
-              key={task.id}
-              className="relative border-b border-border/20"
-              style={{ height: ROW_HEIGHT }}
-            >
+            <div key={task.id} className="relative border-b border-border/20" style={{ height: ROW_HEIGHT }}>
               <TaskBar task={task} />
             </div>
           ))
         )}
-        {/* Empty bottom row for right-click */}
         <div className="relative border-b border-border/20" style={{ height: ROW_HEIGHT }} />
       </div>
     )
 
-    // Grid overlay: rendered once behind all task rows
+    // Grid drawn once behind bars
     const GridOverlay = () => (
-      <div className="absolute inset-0 pointer-events-none" style={{ left: LEFT_WIDTH }}>
-        <div style={{ width: totalDays * DAY_WIDTH, height: '100%' }}>
+      <div className="absolute inset-0 pointer-events-none">
+        <div style={{ width: totalDays * dayWidth, height: '100%' }}>
           {Array.from({ length: totalDays }, (_, i) => {
-            const d = new Date(anchorDate)
-            d.setDate(d.getDate() + i)
+            const d = new Date(anchor); d.setDate(d.getDate() + i)
             return (
-              <div
-                key={i}
-                className={cn(
-                  'absolute top-0 bottom-0 border-r border-r-border/10',
-                  isToday(d) ? 'bg-primary/[0.03]' : isWeekend(d) ? 'bg-muted/10' : '',
-                )}
-                style={{ left: i * DAY_WIDTH, width: DAY_WIDTH }}
-              />
+              <div key={i}
+                className={cn('absolute top-0 bottom-0 border-r border-r-border/10', isToday(d) && 'bg-primary/[0.03]', isWeekend(d) && !isToday(d) && 'bg-muted/10')}
+                style={{ left: i * dayWidth, width: dayWidth }} />
             )
           })}
         </div>
       </div>
     )
 
+    const LeftRows = () => (
+      <>
+        {sortedTasks.length === 0 ? (
+          <div className="flex items-center px-3 text-[11px] text-muted-foreground/40 border-b border-border/20" style={{ height: ROW_HEIGHT }}>暂无任务</div>
+        ) : (
+          sortedTasks.map(task => (
+            <div key={task.id} className="flex items-center gap-2 px-3 border-b border-border/20 bg-card" style={{ height: ROW_HEIGHT }}>
+              <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: COLOR_HEX[task.color] || '#4895ef' }} />
+              <span className={cn('text-[12px] truncate flex-1', task.status === 'completed' && 'line-through text-muted-foreground')}>{task.name}</span>
+              <Badge variant={STATUS_VARIANTS[task.status]} className="text-[9px] px-1 py-0 h-4 shrink-0">{STATUS_LABELS[task.status]}</Badge>
+            </div>
+          ))
+        )}
+        <div className="border-b border-border/20 bg-card" style={{ height: ROW_HEIGHT }} />
+      </>
+    )
+
     const ContextMenuPopup = () => (
-      <div
-        ref={contextMenuRef}
-        className="fixed z-[100] min-w-[160px] rounded-lg border border-border bg-popover shadow-xl py-1"
-        style={{ left: contextMenu!.x, top: contextMenu!.y }}
-      >
-        <div className="px-2 py-1 text-[10px] text-muted-foreground border-b border-border/50 mb-1">
-          {contextMenu!.date}
-        </div>
-        <button
-          className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-foreground hover:bg-accent transition-colors text-left"
-          onClick={() => {
-            const d = contextMenu!.date
-            setContextMenu(null)
-            setDialog({ mode: 'create', defaultStartDate: d })
-          }}
-        >
+      <div ref={contextMenuRef}
+        className="fixed z-[100] min-w-[160px] rounded-lg border border-border bg-card shadow-xl py-1"
+        style={{ left: contextMenu!.x, top: contextMenu!.y }}>
+        <div className="px-2 py-1 text-[10px] text-muted-foreground border-b border-border/50 mb-1">{contextMenu!.date}</div>
+        <button className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] hover:bg-accent transition-colors text-left"
+          onClick={() => { const d = contextMenu!.date; setContextMenu(null); setDialog({ mode: 'create', defaultStartDate: d }) }}>
           <Plus className="h-3.5 w-3.5" />新增工作
         </button>
       </div>
@@ -563,74 +483,65 @@ export function register(ctx: any) {
         const e: Record<string, string> = {}
         if (!name.trim()) e.name = '请输入任务名称'
         if (parseDate(ddl) < parseDate(startDate)) e.ddl = '截止日期不能早于开始日期'
-        setErrors(e)
-        return Object.keys(e).length === 0
-      }
-
-      const submit = () => {
-        if (!validate()) return
-        handleSave({ name: name.trim(), description: desc.trim(), startDate, ddl, status }, edit?.id)
+        setErrors(e); return Object.keys(e).length === 0
       }
 
       return (
-        <div
-          data-backdrop="true"
-          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center"
-          onClick={(e) => { if ((e.target as HTMLElement).dataset.backdrop === 'true') setDialog(null) }}
-          onKeyDown={(e) => { if (e.key === 'Escape') setDialog(null) }}
-        >
-          <div className="bg-card rounded-xl border border-border shadow-xl w-[420px] max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-5 py-3 border-b border-border">
+        <div data-backdrop="true"
+          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-6"
+          onClick={(ev) => { if ((ev.target as HTMLElement).dataset.backdrop === 'true') setDialog(null) }}
+          onKeyDown={(ev) => { if (ev.key === 'Escape') setDialog(null) }}>
+          <div className="bg-card rounded-xl border border-border shadow-2xl w-[440px] max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
               <h3 className="text-sm font-semibold">{dialog.mode === 'create' ? '新增工作' : '编辑工作'}</h3>
-              <button className="h-6 w-6 rounded hover:bg-accent flex items-center justify-center" onClick={() => setDialog(null)}>
-                <X className="h-4 w-4 text-muted-foreground" />
-              </button>
+              <button className="h-6 w-6 rounded hover:bg-accent flex items-center justify-center" onClick={() => setDialog(null)}><X className="h-4 w-4 text-muted-foreground" /></button>
             </div>
-            <div className="px-5 py-4 space-y-4">
-              <div className="space-y-1.5">
+            {/* Body */}
+            <div className="px-6 py-5 space-y-4">
+              <div className="space-y-2">
                 <Label>任务名称</Label>
                 <Input placeholder="输入任务名称" value={name}
                   onChange={(e: any) => { setName(e.target.value); setErrors(prev => ({ ...prev, name: '' })) }}
                   className={cn('h-9 text-sm', errors.name && 'border-destructive')} autoFocus
-                  onKeyDown={(e: any) => { if (e.key === 'Enter') submit() }} />
-                {errors.name && <p className="text-[11px] text-destructive">{errors.name}</p>}
+                  onKeyDown={(e: any) => { if (e.key === 'Enter') { if (!validate()) return; handleSave({ name: name.trim(), description: desc.trim(), startDate, ddl, status }, edit?.id) } }} />
+                {errors.name && <p className="text-[11px] text-destructive mt-1">{errors.name}</p>}
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <Label>描述</Label>
-                <textarea placeholder="输入任务描述（可选）" value={desc} onChange={(e: any) => setDesc(e.target.value)} rows={2}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring resize-none" />
+                <textarea placeholder="任务描述（可选）" value={desc} onChange={(e: any) => setDesc(e.target.value)} rows={2}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-ring resize-none" />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
                   <Label>开始日期</Label>
                   <input type="date" value={startDate} onChange={(e: any) => setStartDate(e.target.value)}
-                    className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring" />
+                    className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring" />
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   <Label>截止日期</Label>
                   <input type="date" value={ddl}
                     onChange={(e: any) => { setDdl(e.target.value); setErrors(prev => ({ ...prev, ddl: '' })) }}
-                    className={cn('w-full h-9 rounded-md border bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring', errors.ddl ? 'border-destructive' : 'border-input')} />
-                  {errors.ddl && <p className="text-[11px] text-destructive">{errors.ddl}</p>}
+                    className={cn('w-full h-9 rounded-md border bg-background px-3 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring', errors.ddl ? 'border-destructive' : 'border-input')} />
+                  {errors.ddl && <p className="text-[11px] text-destructive mt-1">{errors.ddl}</p>}
                 </div>
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <Label>状态</Label>
-                <div className="flex gap-1.5">
+                <div className="flex gap-2">
                   {(['pending', 'in-progress', 'completed'] as Task['status'][]).map(s => (
-                    <button key={s}
-                      className={cn('flex-1 h-8 rounded-md text-[12px] font-medium border transition-colors',
-                        status === s ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-muted-foreground border-input hover:bg-accent')}
+                    <button key={s} type="button"
+                      className={cn('flex-1 h-9 rounded-md text-[12px] font-medium border transition-colors', status === s ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-muted-foreground border-input hover:bg-accent')}
                       onClick={() => setStatus(s)}>{STATUS_LABELS[s]}</button>
                   ))}
                 </div>
               </div>
             </div>
-            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-muted/30 rounded-b-xl">
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border bg-muted/30 rounded-b-xl">
               <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setDialog(null)} disabled={saving}>取消</Button>
-              <Button size="sm" className="h-8 text-xs" onClick={submit} disabled={saving}>
-                {saving && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
-                {saving ? '保存中…' : dialog.mode === 'create' ? '创建' : '保存'}
+              <Button size="sm" className="h-8 text-xs min-w-[60px]" onClick={() => { if (!validate()) return; handleSave({ name: name.trim(), description: desc.trim(), startDate, ddl, status }, edit?.id) }} disabled={saving}>
+                {saving ? <><Loader2 className="h-3 w-3 animate-spin mr-1" />保存中…</> : dialog.mode === 'create' ? '创建' : '保存'}
               </Button>
             </div>
           </div>
@@ -641,58 +552,44 @@ export function register(ctx: any) {
     const TaskTooltipPopup = ({ tooltip }: { tooltip: TooltipState }) => {
       const { task } = tooltip
       const overdue = parseDate(task.ddl) < new Date() && task.status !== 'completed'
+      const hex = COLOR_HEX[task.color] || '#4895ef'
 
       return (
-        <div
-          ref={tooltipRef}
-          className="fixed z-[100] w-[280px] rounded-lg border border-border bg-popover shadow-xl p-4 space-y-3"
+        <div ref={tooltipRef}
+          className="fixed z-[100] w-[280px] rounded-lg border border-border bg-card shadow-xl p-4 space-y-3"
           style={{ left: tooltip.x, top: tooltip.y }}
           onMouseEnter={cancelHideTooltip}
-          onMouseLeave={() => setTooltip(null)}
-        >
+          onMouseLeave={() => setTooltip(null)}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 min-w-0">
-              <div className={cn('w-3 h-3 rounded-full shrink-0', task.color)} />
+              <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: hex }} />
               <h4 className="text-[13px] font-semibold truncate">{task.name}</h4>
             </div>
-            <button className="h-5 w-5 rounded hover:bg-accent flex items-center justify-center shrink-0 ml-2" onClick={() => setTooltip(null)}>
-              <X className="h-3 w-3 text-muted-foreground" />
-            </button>
+            <button className="h-5 w-5 rounded hover:bg-accent flex items-center justify-center shrink-0 ml-2" onClick={() => setTooltip(null)}><X className="h-3 w-3 text-muted-foreground" /></button>
           </div>
           {task.description && <p className="text-[11px] text-muted-foreground leading-relaxed">{task.description}</p>}
           <div className="space-y-1">
-            <div className="flex items-center gap-2 text-[11px]">
-              <Calendar className="h-3 w-3 text-muted-foreground shrink-0" />
-              <span className="text-muted-foreground">开始：</span><span className="text-foreground">{task.startDate}</span>
-            </div>
-            <div className="flex items-center gap-2 text-[11px]">
-              <Flag className="h-3 w-3 text-muted-foreground shrink-0" />
-              <span className="text-muted-foreground">截止：</span>
-              <span className={cn(overdue && 'text-destructive font-medium')}>{task.ddl}{overdue && ' (已逾期)'}</span>
-            </div>
+            <div className="flex items-center gap-2 text-[11px]"><Calendar className="h-3 w-3 text-muted-foreground shrink-0" /><span className="text-muted-foreground">开始：</span><span>{task.startDate}</span></div>
+            <div className="flex items-center gap-2 text-[11px]"><Flag className="h-3 w-3 text-muted-foreground shrink-0" /><span className="text-muted-foreground">截止：</span><span className={cn(overdue && 'text-destructive font-medium')}>{task.ddl}{overdue && ' (已逾期)'}</span></div>
             <Badge variant={STATUS_VARIANTS[task.status]} className="text-[9px] px-1 py-0 h-4">{STATUS_LABELS[task.status]}</Badge>
           </div>
           <div className="flex gap-2 pt-1">
-            <Button variant="outline" size="sm" className="h-7 text-[11px] flex-1" onClick={() => { setTooltip(null); setDialog({ mode: 'edit', task }) }}>
-              <Pencil className="h-3 w-3 mr-1" />编辑
-            </Button>
-            <Button variant="destructive" size="sm" className="h-7 text-[11px] flex-1" onClick={() => handleDelete(task.id)}>
-              <Trash2 className="h-3 w-3 mr-1" />删除
-            </Button>
+            <Button variant="outline" size="sm" className="h-7 text-[11px] flex-1" onClick={() => { setTooltip(null); setDialog({ mode: 'edit', task }) }}><Pencil className="h-3 w-3 mr-1" />编辑</Button>
+            <Button variant="destructive" size="sm" className="h-7 text-[11px] flex-1" onClick={() => handleDelete(task.id)}><Trash2 className="h-3 w-3 mr-1" />删除</Button>
           </div>
         </div>
       )
     }
 
     const TitleBar = () => (
-      <div className="flex items-center gap-3 px-4 py-1.5 border-b border-border bg-card shrink-0" style={{ height: titleBarHeight }}>
+      <div className="flex items-center gap-3 px-4 py-1.5 border-b border-border bg-card shrink-0" style={{ height: 41 }}>
         <BarChart3 className="h-4 w-4 text-muted-foreground shrink-0" />
         <h1 className="text-sm font-semibold">甘特图</h1>
         <span className="text-[10px] text-muted-foreground">· {tasks.length} 任务</span>
         <div className="flex-1" />
         <div className="flex items-center gap-0.5">
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={zoomIn}><ZoomIn className="h-3.5 w-3.5" /></Button>
-          <span className="text-[10px] text-muted-foreground w-7 text-center">{daysToShow}天</span>
+          <span className="text-[10px] text-muted-foreground w-8 text-center">{dayWidth}px</span>
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={zoomOut}><ZoomOut className="h-3.5 w-3.5" /></Button>
         </div>
         <div className="flex items-center gap-0.5">
@@ -700,9 +597,7 @@ export function register(ctx: any) {
           <Button variant="outline" size="sm" className="h-7 text-[11px] px-2" onClick={goToday}>今天</Button>
           <Button variant="outline" size="sm" className="h-7 text-[11px] px-2" onClick={panRight}><ChevronRight className="h-3.5 w-3.5" /></Button>
         </div>
-        <Button size="sm" className="h-7 text-[11px] px-3" onClick={() => setDialog({ mode: 'create', defaultStartDate: formatDate(new Date()) })}>
-          <Plus className="h-3.5 w-3.5 mr-1" />新增工作
-        </Button>
+        <Button size="sm" className="h-7 text-[11px] px-3" onClick={() => setDialog({ mode: 'create', defaultStartDate: formatDate(new Date()) })}><Plus className="h-3.5 w-3.5 mr-1" />新增工作</Button>
       </div>
     )
 
@@ -710,59 +605,29 @@ export function register(ctx: any) {
     // Main
     // =====================================================================
 
-    // Rows for left panel — must exactly match TimelineBody row count & heights
-    const LeftRows = () => (
-      <>
-        {sortedTasks.length === 0 ? (
-          <div className="flex items-center px-3 text-[11px] text-muted-foreground/40 border-b border-border/20" style={{ height: ROW_HEIGHT }}>
-            暂无任务
-          </div>
-        ) : (
-          sortedTasks.map(task => (
-            <div key={task.id} className="flex items-center gap-2 px-3 border-b border-border/20 bg-card" style={{ height: ROW_HEIGHT }}>
-              <div className={cn('w-2 h-2 rounded-full shrink-0', task.color)} />
-              <span className={cn('text-[12px] truncate flex-1', task.status === 'completed' ? 'line-through text-muted-foreground' : 'text-foreground')}>
-                {task.name}
-              </span>
-              <Badge variant={STATUS_VARIANTS[task.status]} className="text-[9px] px-1 py-0 h-4 shrink-0 leading-none">
-                {STATUS_LABELS[task.status]}
-              </Badge>
-            </div>
-          ))
-        )}
-        {/* Empty bottom row — match TimelineBody */}
-        <div className="border-b border-border/20 bg-card" style={{ height: ROW_HEIGHT }} />
-      </>
-    )
-
     return (
       <div className="h-full flex flex-col bg-background select-none">
         <TitleBar />
-
-        {/* Unified scroll container: left panel + right timeline scroll together */}
         <div ref={scrollRef} className="flex-1 overflow-auto">
-          <div className="flex" style={{ minWidth: LEFT_WIDTH + totalDays * DAY_WIDTH, minHeight: '100%' }}>
-            {/* Left panel: sticky during horizontal scroll, vertically inline with timeline */}
-            <div className="sticky left-0 z-20 bg-card border-r border-border" style={{ width: LEFT_WIDTH }}>
-              {/* Header — same height as TimelineHeader */}
+          <div className="flex" style={{ minWidth: LEFT_WIDTH + totalDays * dayWidth, minHeight: '100%' }}>
+            {/* Left panel — sticky left, shares vertical flow with timeline */}
+            <div className="sticky left-0 z-30 bg-card border-r border-border" style={{ width: LEFT_WIDTH }}>
               <div className="sticky top-0 z-30 bg-card border-b border-border px-3 flex items-center" style={{ height: 34 }}>
                 <span className="text-[11px] font-semibold text-muted-foreground">任务名称</span>
                 <span className="ml-auto text-[10px] text-muted-foreground/50">{tasks.length}</span>
               </div>
               <LeftRows />
             </div>
-
-            {/* Right: timeline — shares vertical scroll, scrolls horizontally */}
+            {/* Right — timeline */}
             <div className="flex-1 relative">
               <GridOverlay />
-              <div className="relative">
+              <div className="relative z-10">
                 <TimelineHeader />
                 <TimelineBody />
               </div>
             </div>
           </div>
         </div>
-
         {contextMenu && <ContextMenuPopup />}
         {dialog && <TaskFormDialog dialog={dialog} />}
         {tooltip && <TaskTooltipPopup tooltip={tooltip} />}
@@ -782,9 +647,7 @@ export function register(ctx: any) {
     }
 
     tools['gantt_list'] = {
-      description:
-        '查询甘特图任务列表。可按日期范围、状态筛选。不传参数时返回全部。' +
-        '返回 id、名称、日期、状态等摘要。需要查看某个任务描述时用 gantt_get。',
+      description: '查询甘特图任务列表。可按日期范围、状态筛选。不传参数时返回全部。返回 id、名称、日期、状态等摘要。需要查看某个任务描述时用 gantt_get。',
       inputSchema: {
         type: 'object',
         properties: {
