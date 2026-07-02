@@ -156,14 +156,20 @@ export function register(ctx: any) {
       const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d
     })
 
-    // viewMode → column config
+    // Days in a given month
+    const daysInMonth = (y: number, m: number) => new Date(y, m + 1, 0).getDate()
+
+    // viewMode → column config & grid bounds
     const viewCfg = useMemo(() => {
       switch (viewMode) {
-        case 'year':  return { dayWidth: 72, colsPerUnit: 1, totalCols: 12, scrollAmount: 6, unit: 'month' as const }
-        case 'month': return { dayWidth: 24, colsPerUnit: 1, totalCols: 62, scrollAmount: 7, unit: 'day' as const }
-        case 'day':   return { dayWidth: 56, colsPerUnit: 1, totalCols: 30, scrollAmount: 3, unit: 'day' as const }
+        case 'year':
+          return { dayWidth: 72, totalCols: 12, unit: 'month' as const }
+        case 'month':
+          return { dayWidth: 24, totalCols: daysInMonth(viewDate.getFullYear(), viewDate.getMonth()), unit: 'day' as const }
+        case 'day':
+          return { dayWidth: 56, totalCols: 30, unit: 'day' as const }
       }
-    }, [viewMode])
+    }, [viewMode, viewDate])
     const dayWidth = viewCfg.dayWidth
 
     const scrollRef = useRef<HTMLDivElement>(null)
@@ -180,11 +186,11 @@ export function register(ctx: any) {
       }),
     [tasks])
 
-    // Grid start date (day/month mode) or start year (year mode)
+    // Grid start date
     const gridStart = useMemo(() => {
-      if (viewMode === 'year') {
-        return new Date(viewDate.getFullYear(), 0, 1) // Jan 1 of viewDate's year
-      }
+      if (viewMode === 'year') return new Date(viewDate.getFullYear(), 0, 1)
+      if (viewMode === 'month') return new Date(viewDate.getFullYear(), viewDate.getMonth(), 1)
+      // day mode: 1st of viewDate's month, but may shift back to cover tasks
       if (tasks.length === 0) return viewDate
       let earliest = viewDate
       tasks.forEach(t => {
@@ -195,9 +201,10 @@ export function register(ctx: any) {
       return d < viewDate ? d : viewDate
     }, [tasks, viewDate, viewMode])
 
-    // Total columns in the grid
+    // Total columns
     const gridTotalCols = useMemo(() => {
-      if (viewMode === 'year') return 12 // Jan-Dec
+      if (viewMode === 'year') return 12
+      if (viewMode === 'month') return viewCfg.totalCols
       let latest = gridStart
       tasks.forEach(t => {
         const d = parseDate(t.ddl)
@@ -206,20 +213,28 @@ export function register(ctx: any) {
       return Math.max(viewCfg.totalCols, diffDays(latest, gridStart) + 1 + 14)
     }, [tasks, gridStart, viewMode, viewCfg])
 
-    // Month spans for header (day/month mode only)
+    // Header labels
+    const headerLabel = useMemo(() => {
+      if (viewMode === 'year') return `${viewDate.getFullYear()}年`
+      if (viewMode === 'month') return `${viewDate.getFullYear()}年${viewDate.getMonth() + 1}月`
+      // day mode: date range
+      const end = new Date(gridStart); end.setDate(end.getDate() + gridTotalCols - 1)
+      return `${formatDate(gridStart)} → ${formatDate(end)}`
+    }, [viewMode, viewDate, gridStart, gridTotalCols])
+
+    // Month spans for header
     const monthSpans = useMemo(() => {
       const spans: { label: string; cols: number }[] = []
       if (viewMode === 'year') {
         for (let i = 0; i < 12; i++) {
-          const d = new Date(gridStart); d.setMonth(d.getMonth() + i)
-          spans.push({ label: `${d.getMonth() + 1}月`, cols: 1 })
+          spans.push({ label: `${i + 1}月`, cols: 1 })
         }
         return spans
       }
       let cur: { label: string; cols: number } | null = null
       for (let i = 0; i < gridTotalCols; i++) {
         const d = new Date(gridStart); d.setDate(d.getDate() + i)
-        const label = `${d.getFullYear()}年${d.getMonth() + 1}月`
+        const label = `${d.getMonth() + 1}月`
         if (cur && cur.label === label) { cur.cols++ }
         else {
           if (cur) spans.push(cur)
@@ -472,30 +487,31 @@ export function register(ctx: any) {
     const TimelineHeader = () => {
       const w = gridTotalCols * dayWidth
       const isYear = viewMode === 'year'
+      const isMonth = viewMode === 'month'
       return (
         <div className="sticky top-0 z-10 bg-card" style={{ width: w }}>
-          {/* Month/Year label row */}
-          <div className="flex border-b border-border/30" style={{ height: MONTH_H }}>
-            {monthSpans.map((ms, i) => (
-              <div key={i}
-                className="flex items-center justify-center border-r border-border/20 text-[10px] text-muted-foreground font-medium shrink-0"
-                style={{ width: ms.cols * dayWidth }}>
-                {ms.label}
-              </div>
-            ))}
+          {/* Top label row: year, month name, or date range */}
+          <div className="flex border-b border-border/30 items-center" style={{ height: MONTH_H }}>
+            <div className="flex-1 text-center text-[10px] text-muted-foreground font-medium" style={{ width: w }}>
+              {headerLabel}
+            </div>
           </div>
-          {/* Day/Month detail row */}
+          {/* Column detail row */}
           <div className="flex border-b border-border" style={{ height: DAY_H }}>
-            {isYear ? (
-              // Year mode: repeat month number
-              Array.from({ length: 12 }, (_, i) => (
-                <div key={i}
-                  className="flex items-center justify-center shrink-0 border-r border-r-border/20 text-[10px] text-muted-foreground"
-                  style={{ width: dayWidth, height: DAY_H }}>
-                  {i + 1}
-                </div>
-              ))
+            {(isYear || isMonth) ? (
+              // Year: 1-12月, Month: 1-31日
+              Array.from({ length: gridTotalCols }, (_, i) => {
+                const today = isMonth && isToday(new Date(gridStart.getFullYear(), gridStart.getMonth(), i + 1))
+                return (
+                  <div key={i}
+                    className={cn('flex items-center justify-center shrink-0 border-r border-r-border/20 text-[10px]', today && 'bg-primary/10 text-primary font-semibold', isMonth && isWeekend(new Date(gridStart.getFullYear(), gridStart.getMonth(), i + 1)) && !today && 'bg-muted/30 text-muted-foreground')}
+                    style={{ width: dayWidth, height: DAY_H }}>
+                    {isYear ? `${i + 1}月` : `${i + 1}`}
+                  </div>
+                )
+              })
             ) : (
+              // Day mode: date + weekday
               Array.from({ length: gridTotalCols }, (_, i) => {
                 const d = new Date(gridStart); d.setDate(d.getDate() + i)
                 const today = isToday(d)
