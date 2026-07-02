@@ -626,7 +626,7 @@ export function register(ctx: any) {
         <div ref={scrollRef} className="flex-1 overflow-auto">
           <div className="flex" style={{ minWidth: LEFT_WIDTH + totalDays * dayWidth, minHeight: '100%' }}>
             {/* Left panel — sticky during horizontal scroll, shares vertical flow */}
-            <div className="sticky left-0 z-40 bg-card border-r border-border shadow-[2px_0_4px_rgba(0,0,0,0.05)]" style={{ width: LEFT_WIDTH }}>
+            <div className="sticky left-0 z-40 bg-card" style={{ width: LEFT_WIDTH, boxShadow: '1px 0 0 0 hsl(var(--border)), 2px 0 4px rgba(0,0,0,0.05)' }}>
               <div className="sticky top-0 z-40 bg-card border-b border-border px-3 flex items-center" style={{ height: 34 }}>
                 <span className="text-[11px] font-semibold text-muted-foreground">任务名称</span>
                 <span className="ml-auto text-[10px] text-muted-foreground/50">{tasks.length}</span>
