@@ -772,7 +772,7 @@ export function register(ctx: any) {
         try {
           const sb = getSB()
           let q = sb.from('gantt_tasks').select('*')
-          q = args.id.length === 8 ? q.ilike('id', args.id + '%') : q.eq('id', args.id)
+          q = args.id.length < 36 ? q.filter('id::text', 'like', `${args.id}%`) : q.eq('id', args.id)
           const { data, error } = await q.maybeSingle()
           if (error) throw error
           if (!data) return `未找到 id=${args.id} 的任务。`
