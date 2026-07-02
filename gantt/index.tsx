@@ -204,7 +204,7 @@ export function register(ctx: any) {
     useEffect(() => {
       if (loaded && scrollRef.current) {
         const offset = diffDays(new Date(), anchor)
-        if (offset >= 0) scrollRef.current.scrollLeft = Math.max(0, offset * DEFAULT_DAY_WIDTH - 80)
+        if (offset >= 0) scrollRef.current.scrollLeft = Math.max(0, LEFT_WIDTH + offset * DEFAULT_DAY_WIDTH - 120)
       }
     }, [loaded, anchor])
 
@@ -319,7 +319,8 @@ export function register(ctx: any) {
     const goToday = useCallback(() => {
       if (scrollRef.current) {
         const offset = diffDays(new Date(), anchor)
-        scrollRef.current.scrollTo({ left: Math.max(0, offset * dayWidth - 100), behavior: 'smooth' })
+        // LEFT_WIDTH accounts for the sticky left panel, -100 to put today near left edge
+        scrollRef.current.scrollTo({ left: Math.max(0, LEFT_WIDTH + offset * dayWidth - 120), behavior: 'smooth' })
       }
     }, [anchor, dayWidth])
 
