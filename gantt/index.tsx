@@ -419,7 +419,6 @@ export function register(ctx: any) {
             </div>
           ))
         )}
-        <div className="relative border-b border-border/20" style={{ height: ROW_HEIGHT }} />
       </div>
     )
 
@@ -452,7 +451,6 @@ export function register(ctx: any) {
             </div>
           ))
         )}
-        <div className="border-b border-border/20 bg-card" style={{ height: ROW_HEIGHT }} />
       </>
     )
 
