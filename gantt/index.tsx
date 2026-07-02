@@ -5,7 +5,7 @@
  * 数据存储：Supabase（gantt_tasks 表）
  */
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { BarChart3, Plus, ChevronLeft, ChevronRight, X, Pencil, Trash2, Calendar, Flag, ZoomIn, ZoomOut, Loader2, AlertTriangle, GripHorizontal } from 'lucide-react'
+import { BarChart3, Plus, ChevronLeft, ChevronRight, X, Pencil, Trash2, Calendar, Flag, Loader2, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
@@ -49,8 +49,6 @@ const MIN_BAR_WIDTH = 4
 const TOOLTIP_DELAY = 300
 const TABLE_NAME = 'gantt_tasks'
 const LEFT_WIDTH = 200
-const DEFAULT_DAY_WIDTH = 56
-
 // Color keys (stored in DB) → hex values (used as inline styles to avoid Tailwind purge issues)
 const COLOR_KEYS = [
   'chart-1', 'chart-2', 'chart-3', 'chart-4', 'chart-5',
@@ -147,15 +145,26 @@ export function register(ctx: any) {
     const [loadError, setLoadError] = useState('')
     const [saving, setSaving] = useState(false)
     const [supabaseOk, setSupabaseOk] = useState(true)
-    const [dayWidth, setDayWidth] = useState(DEFAULT_DAY_WIDTH)
+    type ViewMode = 'year' | 'month' | 'day'
+    const [viewMode, setViewMode] = useState<ViewMode>('day')
     const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
     const [tooltip, setTooltip] = useState<TooltipState | null>(null)
     const [dialog, setDialog] = useState<DialogState | null>(null)
 
-    // viewDate: the first visible date. Changes on month/year navigation → full redraw.
+    // viewDate: anchor date for current view
     const [viewDate, setViewDate] = useState<Date>(() => {
-      const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d  // 1st of current month
+      const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d
     })
+
+    // viewMode → column config
+    const viewCfg = useMemo(() => {
+      switch (viewMode) {
+        case 'year':  return { dayWidth: 72, colsPerUnit: 1, totalCols: 12, scrollAmount: 6, unit: 'month' as const }
+        case 'month': return { dayWidth: 24, colsPerUnit: 1, totalCols: 62, scrollAmount: 7, unit: 'day' as const }
+        case 'day':   return { dayWidth: 56, colsPerUnit: 1, totalCols: 30, scrollAmount: 3, unit: 'day' as const }
+      }
+    }, [viewMode])
+    const dayWidth = viewCfg.dayWidth
 
     const scrollRef = useRef<HTMLDivElement>(null)
     const tooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -171,34 +180,44 @@ export function register(ctx: any) {
       }),
     [tasks])
 
-    // gridStart: earliest date shown. May shift left to cover tasks before viewDate.
+    // Grid start date (day/month mode) or start year (year mode)
     const gridStart = useMemo(() => {
+      if (viewMode === 'year') {
+        return new Date(viewDate.getFullYear(), 0, 1) // Jan 1 of viewDate's year
+      }
       if (tasks.length === 0) return viewDate
       let earliest = viewDate
       tasks.forEach(t => {
         const s = parseDate(t.startDate)
         if (s < earliest) earliest = s
       })
-      // Pad 7 days before earliest task
       const d = new Date(earliest); d.setDate(d.getDate() - 7)
-      // Use the earlier of viewDate or earliest-7d
       return d < viewDate ? d : viewDate
-    }, [tasks, viewDate])
+    }, [tasks, viewDate, viewMode])
 
-    const gridTotalDays = useMemo(() => {
+    // Total columns in the grid
+    const gridTotalCols = useMemo(() => {
+      if (viewMode === 'year') return 12 // Jan-Dec
       let latest = gridStart
       tasks.forEach(t => {
         const d = parseDate(t.ddl)
         if (d > latest) latest = d
       })
-      return Math.max(42, diffDays(latest, gridStart) + 1 + 14)
-    }, [tasks, gridStart])
+      return Math.max(viewCfg.totalCols, diffDays(latest, gridStart) + 1 + 14)
+    }, [tasks, gridStart, viewMode, viewCfg])
 
-    // Month spans for header
+    // Month spans for header (day/month mode only)
     const monthSpans = useMemo(() => {
       const spans: { label: string; cols: number }[] = []
+      if (viewMode === 'year') {
+        for (let i = 0; i < 12; i++) {
+          const d = new Date(gridStart); d.setMonth(d.getMonth() + i)
+          spans.push({ label: `${d.getMonth() + 1}月`, cols: 1 })
+        }
+        return spans
+      }
       let cur: { label: string; cols: number } | null = null
-      for (let i = 0; i < gridTotalDays; i++) {
+      for (let i = 0; i < gridTotalCols; i++) {
         const d = new Date(gridStart); d.setDate(d.getDate() + i)
         const label = `${d.getFullYear()}年${d.getMonth() + 1}月`
         if (cur && cur.label === label) { cur.cols++ }
@@ -209,7 +228,27 @@ export function register(ctx: any) {
       }
       if (cur) spans.push(cur)
       return spans
-    }, [gridTotalDays, gridStart])
+    }, [gridTotalCols, gridStart, viewMode])
+
+    // Compute bar position for a task
+    const barLeft = useCallback((task: Task) => {
+      if (viewMode === 'year') {
+        const sm = parseDate(task.startDate).getMonth()
+        const bm = gridStart.getMonth()
+        return (sm - bm + (parseDate(task.startDate).getFullYear() - gridStart.getFullYear()) * 12) * dayWidth
+      }
+      return diffDays(parseDate(task.startDate), gridStart) * dayWidth
+    }, [dayWidth, gridStart, viewMode])
+
+    const barWidth = useCallback((task: Task) => {
+      if (viewMode === 'year') {
+        const sm = parseDate(task.startDate)
+        const em = parseDate(task.ddl)
+        const months = (em.getFullYear() - sm.getFullYear()) * 12 + em.getMonth() - sm.getMonth() + 1
+        return Math.max(months * dayWidth, MIN_BAR_WIDTH)
+      }
+      return Math.max((diffDays(parseDate(task.ddl), parseDate(task.startDate)) + 1) * dayWidth, MIN_BAR_WIDTH)
+    }, [dayWidth, viewMode])
 
     // ---- Load tasks ----
     const loadTasks = useCallback(async () => {
@@ -234,18 +273,33 @@ export function register(ctx: any) {
     useEffect(() => {
       if (loaded && scrollRef.current) {
         const offset = diffDays(new Date(), gridStart)
-        if (offset >= 0 && offset < gridTotalDays) {
+        if (offset >= 0 && offset < gridTotalCols) {
           scrollRef.current.scrollLeft = Math.max(0, LEFT_WIDTH + offset * dayWidth - 120)
         }
       }
-    }, [loaded, gridStart, dayWidth, gridTotalDays])
+    }, [loaded, gridStart, dayWidth, gridTotalCols])
 
-    // Reset scroll position when viewDate changes (month navigation)
+    // Reset scroll position when viewDate changes
     useEffect(() => {
       if (loaded && scrollRef.current) {
         scrollRef.current.scrollLeft = 0
       }
     }, [viewDate, loaded])
+
+    // Scroll arrow visibility
+    const [canScrollLeft, setCanScrollLeft] = useState(false)
+    const [canScrollRight, setCanScrollRight] = useState(true)
+    const updateScrollArrows = useCallback(() => {
+      const el = scrollRef.current; if (!el) return
+      setCanScrollLeft(el.scrollLeft > 4)
+      setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 4)
+    }, [])
+    useEffect(() => {
+      const el = scrollRef.current; if (!el) return
+      updateScrollArrows()
+      el.addEventListener('scroll', updateScrollArrows, { passive: true })
+      return () => el.removeEventListener('scroll', updateScrollArrows)
+    }, [loaded, gridTotalCols, dayWidth, updateScrollArrows])
 
     // ---- Context menu dismiss ----
     useEffect(() => {
@@ -357,29 +411,22 @@ export function register(ctx: any) {
     // ---- Navigation ----
     const goToday = useCallback(() => {
       const now = new Date()
-      setViewDate(new Date(now.getFullYear(), now.getMonth(), 1))
-      // Scroll after render — use requestAnimationFrame
-      requestAnimationFrame(() => {
-        if (scrollRef.current) {
-          const offset = diffDays(now, gridStart)
-          scrollRef.current.scrollLeft = Math.max(0, LEFT_WIDTH + offset * dayWidth - 120)
-        }
-      })
-    }, [dayWidth, gridStart])
+      if (viewMode === 'year') {
+        setViewDate(new Date(now.getFullYear(), 0, 1))
+      } else {
+        setViewDate(new Date(now.getFullYear(), now.getMonth(), 1))
+      }
+    }, [viewMode])
 
-    const panMonthLeft = useCallback(() => {
-      setViewDate(prev => { const d = new Date(prev); d.setMonth(d.getMonth() - 1); return d })
+    const scrollLeft  = useCallback(() => { scrollRef.current?.scrollBy({ left: -viewCfg.scrollAmount * dayWidth, behavior: 'smooth' }) }, [dayWidth, viewCfg])
+    const scrollRight = useCallback(() => { scrollRef.current?.scrollBy({ left: viewCfg.scrollAmount * dayWidth, behavior: 'smooth' }) }, [dayWidth, viewCfg])
+
+    const switchMode = useCallback((m: ViewMode) => {
+      const now = new Date()
+      if (m === 'year') setViewDate(new Date(now.getFullYear(), 0, 1))
+      else setViewDate(new Date(now.getFullYear(), now.getMonth(), 1))
+      setViewMode(m)
     }, [])
-
-    const panMonthRight = useCallback(() => {
-      setViewDate(prev => { const d = new Date(prev); d.setMonth(d.getMonth() + 1); return d })
-    }, [])
-
-    const panLeft  = useCallback(() => { scrollRef.current?.scrollBy({ left: -7 * dayWidth, behavior: 'smooth' }) }, [dayWidth])
-    const panRight = useCallback(() => { scrollRef.current?.scrollBy({ left: 7 * dayWidth, behavior: 'smooth' }) }, [dayWidth])
-
-    const zoomIn  = useCallback(() => setDayWidth(d => clamp(d + 8, 28, 100)), [])
-    const zoomOut = useCallback(() => setDayWidth(d => clamp(d - 8, 28, 100)), [])
 
     // =====================================================================
     // Render states
@@ -414,10 +461,11 @@ export function register(ctx: any) {
     const DAY_H = 34
 
     const TimelineHeader = () => {
-      const w = gridTotalDays * dayWidth
+      const w = gridTotalCols * dayWidth
+      const isYear = viewMode === 'year'
       return (
         <div className="sticky top-0 z-10 bg-card" style={{ width: w }}>
-          {/* Month row */}
+          {/* Month/Year label row */}
           <div className="flex border-b border-border/30" style={{ height: MONTH_H }}>
             {monthSpans.map((ms, i) => (
               <div key={i}
@@ -427,34 +475,43 @@ export function register(ctx: any) {
               </div>
             ))}
           </div>
-          {/* Day row */}
+          {/* Day/Month detail row */}
           <div className="flex border-b border-border" style={{ height: DAY_H }}>
-            {Array.from({ length: gridTotalDays }, (_, i) => {
-              const d = new Date(gridStart); d.setDate(d.getDate() + i)
-              const today = isToday(d)
-              return (
+            {isYear ? (
+              // Year mode: repeat month number
+              Array.from({ length: 12 }, (_, i) => (
                 <div key={i}
-                  className={cn('flex flex-col items-center justify-center shrink-0 border-r border-r-border/20', today && 'bg-primary/10', isWeekend(d) && !today && 'bg-muted/30')}
+                  className="flex items-center justify-center shrink-0 border-r border-r-border/20 text-[10px] text-muted-foreground"
                   style={{ width: dayWidth, height: DAY_H }}>
-                  <span className={cn('text-[10px] leading-tight', today ? 'text-primary font-semibold' : isWeekend(d) ? 'text-muted-foreground' : 'text-foreground')}>
-                    {d.getMonth() + 1}/{d.getDate()}
-                  </span>
-                  <span className={cn('text-[9px] leading-tight', today ? 'text-primary/60' : 'text-muted-foreground/50')}>
-                    {WEEKDAY_LABELS[d.getDay()]}
-                  </span>
+                  {i + 1}
                 </div>
-              )
-            })}
+              ))
+            ) : (
+              Array.from({ length: gridTotalCols }, (_, i) => {
+                const d = new Date(gridStart); d.setDate(d.getDate() + i)
+                const today = isToday(d)
+                return (
+                  <div key={i}
+                    className={cn('flex flex-col items-center justify-center shrink-0 border-r border-r-border/20', today && 'bg-primary/10', isWeekend(d) && !today && 'bg-muted/30')}
+                    style={{ width: dayWidth, height: DAY_H }}>
+                    <span className={cn('text-[10px] leading-tight', today ? 'text-primary font-semibold' : isWeekend(d) ? 'text-muted-foreground' : 'text-foreground')}>
+                      {d.getMonth() + 1}/{d.getDate()}
+                    </span>
+                    <span className={cn('text-[9px] leading-tight', today ? 'text-primary/60' : 'text-muted-foreground/50')}>
+                      {WEEKDAY_LABELS[d.getDay()]}
+                    </span>
+                  </div>
+                )
+              })
+            )}
           </div>
         </div>
       )
     }
 
     const TaskBar = ({ task }: { task: Task }) => {
-      const start = parseDate(task.startDate)
-      const end = parseDate(task.ddl)
-      const left = diffDays(start, gridStart) * dayWidth
-      const barW = Math.max((diffDays(end, start) + 1) * dayWidth, MIN_BAR_WIDTH)
+      const left = barLeft(task)
+      const bw = barWidth(task)
       const overdue = parseDate(task.ddl) < new Date() && task.status !== 'completed'
       const hex = COLOR_HEX[task.color] || '#4895ef'
 
@@ -462,13 +519,13 @@ export function register(ctx: any) {
         <div
           className={cn('absolute rounded flex items-center gap-1 cursor-pointer transition-shadow hover:shadow-lg group', overdue && 'ring-2 ring-destructive ring-offset-1 ring-offset-background')}
           style={{
-            left, top: 5, width: barW, height: ROW_HEIGHT - 10, minWidth: MIN_BAR_WIDTH,
+            left, top: 5, width: bw, height: ROW_HEIGHT - 10, minWidth: MIN_BAR_WIDTH,
             backgroundColor: hex, opacity: task.status === 'completed' ? 0.45 : 1,
           }}
           onMouseEnter={(e) => showTooltip(task, e.currentTarget as HTMLElement)}
           onMouseLeave={hideTooltip}
         >
-          {barW > 60 && (
+          {bw > 40 && (
             <span className={cn('text-[11px] text-white font-medium truncate px-2', task.status === 'completed' && 'line-through')}>
               {task.name}
             </span>
@@ -478,7 +535,7 @@ export function register(ctx: any) {
     }
 
     const TimelineBody = () => (
-      <div style={{ width: gridTotalDays * dayWidth }} onContextMenu={handleContextMenu}>
+      <div style={{ width: gridTotalCols * dayWidth }} onContextMenu={handleContextMenu}>
         {sortedTasks.length === 0 ? (
           <div className="flex items-center justify-center text-xs text-muted-foreground/40 select-none border-b border-border/20" style={{ height: ROW_HEIGHT }}>右键此处新增工作</div>
         ) : (
@@ -494,8 +551,8 @@ export function register(ctx: any) {
     // Grid drawn once behind bars
     const GridOverlay = () => (
       <div className="absolute inset-0 pointer-events-none">
-        <div style={{ width: gridTotalDays * dayWidth, height: '100%' }}>
-          {Array.from({ length: gridTotalDays }, (_, i) => {
+        <div style={{ width: gridTotalCols * dayWidth, height: '100%' }}>
+          {Array.from({ length: gridTotalCols }, (_, i) => {
             const d = new Date(gridStart); d.setDate(d.getDate() + i)
             return (
               <div key={i}
@@ -665,30 +722,40 @@ export function register(ctx: any) {
       )
     }
 
-    const TitleBar = () => (
-      <div className="flex items-center gap-3 px-4 py-1.5 border-b border-border bg-card shrink-0" style={{ height: 41 }}>
-        <BarChart3 className="h-4 w-4 text-muted-foreground shrink-0" />
-        <h1 className="text-sm font-semibold">甘特图</h1>
-        <span className="text-[10px] text-muted-foreground">· {tasks.length} 任务</span>
-        <div className="flex-1" />
-        <div className="flex items-center gap-0.5">
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={zoomIn}><ZoomIn className="h-3.5 w-3.5" /></Button>
-          <span className="text-[10px] text-muted-foreground w-8 text-center">{dayWidth}px</span>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={zoomOut}><ZoomOut className="h-3.5 w-3.5" /></Button>
-        </div>
-        <div className="flex items-center gap-0.5">
-          <Button variant="outline" size="sm" className="h-7 text-[11px] px-2" onClick={panMonthLeft}><ChevronLeft className="h-3 w-3" /><ChevronLeft className="h-3 w-3 -ml-1.5" /></Button>
-          <span className="text-[10px] text-muted-foreground w-6 text-center">月</span>
-          <Button variant="outline" size="sm" className="h-7 text-[11px] px-2" onClick={panMonthRight}><ChevronRight className="h-3 w-3" /><ChevronRight className="h-3 w-3 -ml-1.5" /></Button>
-        </div>
-        <div className="flex items-center gap-0.5">
-          <Button variant="outline" size="sm" className="h-7 text-[11px] px-2" onClick={panLeft}><ChevronLeft className="h-3.5 w-3.5" /></Button>
+    const TitleBar = () => {
+      const modes: { key: ViewMode; label: string }[] = [
+        { key: 'year', label: '年' },
+        { key: 'month', label: '月' },
+        { key: 'day', label: '日' },
+      ]
+      return (
+        <div className="flex items-center gap-3 px-4 py-1.5 border-b border-border bg-card shrink-0" style={{ height: 41 }}>
+          <BarChart3 className="h-4 w-4 text-muted-foreground shrink-0" />
+          <h1 className="text-sm font-semibold">甘特图</h1>
+          <span className="text-[10px] text-muted-foreground">{tasks.length} 任务</span>
+
+          <div className="flex-1" />
+
+          {/* View mode switcher */}
+          <div className="flex rounded-md border border-border overflow-hidden">
+            {modes.map((m, i) => (
+              <button key={m.key}
+                className={cn('px-2.5 py-1 text-[11px] font-medium transition-colors',
+                  i > 0 && 'border-l border-border',
+                  viewMode === m.key ? 'bg-primary text-primary-foreground' : 'bg-card hover:bg-accent',
+                )}
+                onClick={() => switchMode(m.key)}>{m.label}</button>
+            ))}
+          </div>
+
           <Button variant="outline" size="sm" className="h-7 text-[11px] px-2" onClick={goToday}>今天</Button>
-          <Button variant="outline" size="sm" className="h-7 text-[11px] px-2" onClick={panRight}><ChevronRight className="h-3.5 w-3.5" /></Button>
+
+          <Button size="sm" className="h-7 text-[11px] px-3" onClick={() => setDialog({ mode: 'create', defaultStartDate: formatDate(new Date()) })}>
+            <Plus className="h-3.5 w-3.5 mr-1" />新增工作
+          </Button>
         </div>
-        <Button size="sm" className="h-7 text-[11px] px-3" onClick={() => setDialog({ mode: 'create', defaultStartDate: formatDate(new Date()) })}><Plus className="h-3.5 w-3.5 mr-1" />新增工作</Button>
-      </div>
-    )
+      )
+    }
 
     // =====================================================================
     // Main
@@ -698,7 +765,7 @@ export function register(ctx: any) {
       <div className="h-full flex flex-col bg-background select-none">
         <TitleBar />
         <div ref={scrollRef} className="flex-1 overflow-auto">
-          <div className="flex" style={{ minWidth: LEFT_WIDTH + gridTotalDays * dayWidth, minHeight: '100%' }}>
+          <div className="flex" style={{ minWidth: LEFT_WIDTH + gridTotalCols * dayWidth, minHeight: '100%' }}>
             {/* Left panel — sticky during horizontal scroll, shares vertical flow */}
             <div className="sticky left-0 z-40 bg-card" style={{ width: LEFT_WIDTH, boxShadow: '1px 0 0 0 hsl(var(--border)), 2px 0 4px rgba(0,0,0,0.05)' }}>
               <div className="sticky top-0 z-40 bg-card border-b border-border px-3 flex items-center" style={{ height: HEADER_H }}>
@@ -708,10 +775,21 @@ export function register(ctx: any) {
               <LeftRows />
             </div>
             {/* Right — timeline */}
-            <div className="flex-1 relative" style={{ minWidth: gridTotalDays * dayWidth }}>
+            <div className="flex-1 relative" style={{ minWidth: gridTotalCols * dayWidth }}>
               <GridOverlay />
               <TimelineHeader />
               <TimelineBody />
+              {/* Scroll arrows on timeline edges */}
+              {canScrollLeft && (
+                <button className="absolute left-0 z-50 w-7 h-10 rounded-r border border-border bg-card/90 shadow flex items-center justify-center hover:bg-accent"
+                  style={{ top: `calc(50% + ${HEADER_H / 2}px)`, transform: 'translateY(-50%)' }}
+                  onClick={scrollLeft}><ChevronLeft className="h-4 w-4" /></button>
+              )}
+              {canScrollRight && (
+                <button className="absolute right-0 z-50 w-7 h-10 rounded-l border border-border bg-card/90 shadow flex items-center justify-center hover:bg-accent"
+                  style={{ top: `calc(50% + ${HEADER_H / 2}px)`, transform: 'translateY(-50%)' }}
+                  onClick={scrollRight}><ChevronRight className="h-4 w-4" /></button>
+              )}
             </div>
           </div>
         </div>
