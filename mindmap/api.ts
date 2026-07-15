@@ -124,6 +124,8 @@ export async function batchCreateNodes(nodes: MindMapNode[]): Promise<void> {
       text: n.text,
       color: n.color,
       sort_order: n.sort_order,
+      created_at: n.created_at,
+      updated_at: n.updated_at,
     }))
     const { error } = await db().from('mindmap_nodes').insert(rows)
     if (error) throw error

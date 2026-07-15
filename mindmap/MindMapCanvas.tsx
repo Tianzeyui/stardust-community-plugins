@@ -35,10 +35,14 @@ let _toastId = 0
 function showToastImpl(
   setToasts: React.Dispatch<React.SetStateAction<ToastItem[]>>,
   t: { title: string; description?: string; variant?: 'default' | 'destructive'; duration?: number },
+  mounted: React.MutableRefObject<boolean>,
 ) {
   const id = ++_toastId
+  if (!mounted.current) return
   setToasts(prev => [...prev, { id, title: t.title, description: t.description, variant: t.variant }])
-  setTimeout(() => setToasts(prev => prev.filter(x => x.id !== id)), t.duration ?? 2000)
+  setTimeout(() => {
+    if (mounted.current) setToasts(prev => prev.filter(x => x.id !== id))
+  }, t.duration ?? 2000)
 }
 
 // ============================================================
@@ -131,10 +135,19 @@ function curvedPath(x1: number, y1: number, x2: number, y2: number): string {
 function topoSort(nodeList: MindMapNode[]): MindMapNode[] {
   const result: MindMapNode[] = []
   const visited = new Set<string>()
+  const inStack = new Set<string>() // 检测循环引用
   const dfs = (n: MindMapNode) => {
     if (visited.has(n.id)) return
+    // 检测循环引用：如果节点已在当前递归栈中，先标记为 visited 避免无限递归
+    if (inStack.has(n.id)) {
+      // 断开循环：将该节点的 parent_id 置空，相当于变成根节点
+      n.parent_id = null as any
+      return
+    }
+    inStack.add(n.id)
     const parent = nodeList.find(x => x.id === n.parent_id)
     if (parent) dfs(parent)
+    inStack.delete(n.id)
     visited.add(n.id)
     result.push(n)
   }
@@ -239,11 +252,21 @@ export const MindMapCanvas: React.FC<Props> = ({ map, onBack }) => {
   const saveStatusRef = useRef(saveStatus); saveStatusRef.current = saveStatus
   const selectedIdRef = useRef(selectedId); selectedIdRef.current = selectedId
   const editingIdRef = useRef(editingId); editingIdRef.current = editingId
+  const editTextRef = useRef(editText); editTextRef.current = editText
   const mapRef = useRef(map); mapRef.current = map
   const mouseDownRef = useRef(false)  // 追踪鼠标按键是否按下
+  const mountedRef = useRef(true)      // 防卸载后 setState
 
   const showToast = useCallback((t: { title: string; description?: string; variant?: 'default' | 'destructive'; duration?: number }) => {
-    showToastImpl(setToasts, t)
+    showToastImpl(setToasts, t, mountedRef)
+  }, [])
+
+  // ============================================================
+  // 卸载标记
+  // ============================================================
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
   }, [])
 
   // ============================================================
@@ -337,7 +360,10 @@ export const MindMapCanvas: React.FC<Props> = ({ map, onBack }) => {
   const visibleNodes = useMemo(() => {
     if (collapsedIds.size === 0) return nodes
     const hidden = new Set<string>()
+    const visited = new Set<string>() // 防循环引用
     function markDescendants(pid: string) {
+      if (visited.has(pid)) return
+      visited.add(pid)
       for (const n of nodes) {
         if (n.parent_id === pid) { hidden.add(n.id); markDescendants(n.id) }
       }
@@ -500,16 +526,18 @@ export const MindMapCanvas: React.FC<Props> = ({ map, onBack }) => {
   }
 
   const handleEditSave = useCallback(() => {
-    if (!editingId || !editText.trim()) return
+    const id = editingIdRef.current
+    const text = editTextRef.current
+    if (!id || !text.trim()) return
     pushSnapshot()
-    const newText = editText.trim()
+    const newText = text.trim()
     setNodes(prev => prev.map(n =>
-      n.id === editingId ? { ...n, text: newText, updated_at: new Date().toISOString() } : n
+      n.id === id ? { ...n, text: newText, updated_at: new Date().toISOString() } : n
     ))
     setEditingId(null)
     setIsDirty(true)
     showToast({ title: '文本已更新', description: 'Ctrl+Z 撤销', duration: 1500 })
-  }, [editingId, editText, pushSnapshot, showToast])
+  }, [pushSnapshot, showToast])
 
   const handleColorChange = useCallback((nodeId: string, color: string) => {
     pushSnapshot()
@@ -587,6 +615,14 @@ export const MindMapCanvas: React.FC<Props> = ({ map, onBack }) => {
       if (dragged) {
         pushSnapshot()
         if (dragState.targetId) {
+          // 防止循环引用：不能将节点拖到自己的后代节点下
+          const descendantIds = collectDescendantIds(dragState.nodeId, nodesRef.current)
+          if (descendantIds.has(dragState.targetId)) {
+            showToast({ title: '不能将节点移动到其后代节点下', variant: 'destructive', duration: 1500 })
+            setDragState({ nodeId: null, startX: 0, startY: 0, svgX: 0, svgY: 0, isActive: false, targetId: null })
+            setIsPanning(false)
+            return
+          }
           // 移到目标节点下成为子节点
           const targetSibs = nodesRef.current.filter(n => (n.parent_id || null) === dragState.targetId)
           setNodes(prev => prev.map(n =>
@@ -678,15 +714,26 @@ export const MindMapCanvas: React.FC<Props> = ({ map, onBack }) => {
   // ============================================================
   // 平移 & 缩放
   // ============================================================
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault()
-    const scale = e.deltaY > 0 ? 1.1 : 0.9
-    setViewBox(vb => {
-      const cx = vb.x + vb.w / 2; const cy = vb.y + vb.h / 2
-      const nw = vb.w * scale; const nh = vb.h * scale
-      return { x: cx - nw / 2, y: cy - nh / 2, w: nw, h: nh }
-    })
-  }, [])
+  // 使用原生事件监听以支持 { passive: false }，避免浏览器报错：
+  // "Unable to preventDefault inside passive event listener invocation"
+  // 注意：依赖 loading 和 nodes.length，确保 SVG 渲染到 DOM 后才绑定事件
+  useEffect(() => {
+    const svg = svgRef.current
+    if (!svg) return
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const scale = e.deltaY > 0 ? 1.1 : 0.9
+      setViewBox(vb => {
+        const cx = vb.x + vb.w / 2; const cy = vb.y + vb.h / 2
+        const nw = vb.w * scale; const nh = vb.h * scale
+        return { x: cx - nw / 2, y: cy - nh / 2, w: nw, h: nh }
+      })
+    }
+
+    svg.addEventListener('wheel', handleWheel, { passive: false })
+    return () => svg.removeEventListener('wheel', handleWheel)
+  }, [loading, nodes.length])
 
   const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
     mouseDownRef.current = true
@@ -856,7 +903,6 @@ export const MindMapCanvas: React.FC<Props> = ({ map, onBack }) => {
         ref={svgRef}
         className="flex-1 w-full"
         viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
-        onWheel={handleWheel}
         onMouseDown={handleCanvasMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
