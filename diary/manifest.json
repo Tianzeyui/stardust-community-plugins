@@ -7,5 +7,9 @@
   "navOrder": 60,
   "enabled": true,
   "systemHeader": false,
-  "permissions": ["ai", "files"]
+  "permissions": [
+    "ai",
+    "files"
+  ],
+  "paradigm": "cordis"
 }

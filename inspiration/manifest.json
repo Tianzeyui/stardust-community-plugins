@@ -7,5 +7,10 @@
   "navOrder": 70,
   "enabled": true,
   "systemHeader": false,
-  "permissions": ["ai", "files", "cloudinary"]
+  "permissions": [
+    "ai",
+    "files",
+    "cloudinary"
+  ],
+  "paradigm": "cordis"
 }

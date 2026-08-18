@@ -6,16 +6,16 @@
     "description": "AI 辅助日记写作，时间线浏览",
     "icon": "BookOpen",
     "permissions": ["ai", "files"],
-    "files": ["manifest.json", "index.tsx", "package.json", "supabase/diary.sql"]
+    "files": ["manifest.json", "package.json", "lib/index.js", "lib/client.js", "src/index.ts", "src/client.ts", "supabase/diary.sql"]
   },
   {
     "id": "hello-world",
     "name": "Hello World",
     "version": "1.0.0",
-    "description": "示例插件——演示 React/TSX、AI 工具、Supabase 集成",
+    "description": "示例插件——演示 Cordis 新范式、AI 工具、自带 React 页面",
     "icon": "Package",
-    "permissions": ["ai", "supabase", "cloudinary", "sandbox", "files", "graph"],
-    "files": ["manifest.json", "index.tsx", "package.json"]
+    "permissions": ["ai"],
+    "files": ["manifest.json", "package.json", "lib/index.js", "lib/client.js", "src/index.ts", "src/client.tsx"]
   },
   {
     "id": "inspiration",
@@ -23,8 +23,8 @@
     "version": "1.0.0",
     "description": "灵感收集与管理，随机漫步",
     "icon": "Lightbulb",
-    "permissions": ["ai", "files", "cloudinary"],
-    "files": ["manifest.json", "index.tsx", "package.json", "supabase/inspiration.sql"]
+    "permissions": ["ai", "files"],
+    "files": ["manifest.json", "package.json", "lib/index.js", "lib/client.js", "src/index.ts", "src/client.ts", "supabase/inspiration.sql"]
   },
   {
     "id": "gantt",
@@ -33,6 +33,24 @@
     "description": "项目管理甘特图，任务规划与时间线可视化",
     "icon": "BarChart3",
     "permissions": ["supabase"],
-    "files": ["manifest.json", "index.tsx", "package.json", "supabase/gantt.sql"]
+    "files": ["manifest.json", "package.json", "lib/index.js", "lib/client.js", "src/index.ts", "src/client.ts", "supabase/gantt.sql"]
+  },
+  {
+    "id": "board",
+    "name": "卡片看板",
+    "version": "1.0.0",
+    "description": "卡片看板，任务规划与看板视图",
+    "icon": "FolderKanban",
+    "permissions": ["supabase"],
+    "files": ["manifest.json", "package.json", "lib/index.js", "lib/client.js", "src/index.ts", "src/client.ts"]
+  },
+  {
+    "id": "drawio",
+    "name": "drawio",
+    "version": "1.0.0",
+    "description": "draw.io 图表",
+    "icon": "Workflow",
+    "permissions": ["supabase"],
+    "files": ["manifest.json", "package.json", "lib/index.js", "lib/client.js", "src/index.ts", "src/client.ts"]
   }
 ]
