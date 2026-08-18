@@ -1,11 +1,13 @@
 {
   "id": "mindmap",
   "name": "思维导图",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "SVG 画布树形脑图，支持节点增删改、颜色标记、平移缩放",
   "icon": "Lightbulb",
   "navOrder": 75,
   "enabled": true,
   "systemHeader": false,
-  "permissions": ["supabase"]
+  "permissions": [
+    "supabase"
+  ]
 }

@@ -7,7 +7,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
   ArrowLeft, Plus, ZoomIn, ZoomOut, Loader2, Pencil, X, Undo2, Redo2, Save,
 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Button } from './ui'
 import type { MindMap, MindMapNode, LayoutNode } from './types'
 import { NODE_COLORS, DEFAULT_COLOR } from './types'
 import * as api from './api'

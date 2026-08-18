@@ -129,7 +129,7 @@
   {
     "id": "mindmap",
     "name": "思维导图",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "思维导图，树形脑图可视化",
     "icon": "Workflow",
     "permissions": [
@@ -142,6 +142,11 @@
       "lib/client.js",
       "src/index.ts",
       "src/client.tsx",
+      "MindMapPage.tsx",
+      "MindMapCanvas.tsx",
+      "ui.tsx",
+      "api.ts",
+      "types.ts",
       "supabase/mindmaps.sql"
     ]
   }

@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import { Plus, Loader2, Trash2, Pencil, Lightbulb, AlertTriangle } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Button } from './ui'
 import type { MindMap } from './types'
 import { MindMapCanvas } from './MindMapCanvas'
 import * as api from './api'
