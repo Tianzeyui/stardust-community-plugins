@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { useRef, useState, useCallback } from 'react'
-import { cn } from '@/lib/utils'
+import { cn } from './ui'
 import type { BoardCard as BoardCardType } from './types'
 import { PRIORITY_LABELS, PRIORITY_COLORS } from './types'
 

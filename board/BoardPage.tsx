@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import { Plus, Loader2, FolderKanban, Trash2, Pencil, AlertTriangle, ClipboardList } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Button } from './ui'
 import type { BoardPool, BoardData, BoardView } from './types'
 import { BoardForm } from './BoardForm'
 import { KanbanBoard } from './KanbanBoard'

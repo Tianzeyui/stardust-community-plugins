@@ -8,8 +8,8 @@ import {
   Loader2, StickyNote, Ban, ClipboardList,
   CheckSquare, Search, Rocket, Square,
 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { Button } from './ui'
+import { cn } from './ui'
 import type { BoardData, BoardLane, BoardStage, BoardCard, Priority } from './types'
 import { PRIORITY_LABELS, PRIORITY_COLORS } from './types'
 import { BoardCardForm } from './BoardCardForm'

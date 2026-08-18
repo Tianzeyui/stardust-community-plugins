@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { X, Loader2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Button } from './ui'
 import type { BoardPool } from './types'
 
 interface Props {

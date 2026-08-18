@@ -60,7 +60,7 @@
   {
     "id": "gantt",
     "name": "甘特图",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "项目管理甘特图，任务规划与时间线可视化",
     "icon": "BarChart3",
     "permissions": [
@@ -72,15 +72,15 @@
       "lib/index.js",
       "lib/client.js",
       "src/index.ts",
-      "src/client.ts",
+      "src/client.tsx",
       "supabase/gantt.sql"
     ]
   },
   {
     "id": "board",
     "name": "卡片看板",
-    "version": "1.0.0",
-    "description": "卡片看板，任务规划与看板视图",
+    "version": "1.0.1",
+    "description": "泳道+阶段矩阵式任务看板，支持卡片拖拽、优先级管理、备注功能",
     "icon": "FolderKanban",
     "permissions": [
       "supabase"
@@ -91,7 +91,16 @@
       "lib/index.js",
       "lib/client.js",
       "src/index.ts",
-      "src/client.ts"
+      "src/client.tsx",
+      "BoardPage.tsx",
+      "KanbanBoard.tsx",
+      "BoardCard.tsx",
+      "BoardCardForm.tsx",
+      "BoardForm.tsx",
+      "ui.tsx",
+      "api.ts",
+      "types.ts",
+      "supabase/board.sql"
     ]
   },
   {

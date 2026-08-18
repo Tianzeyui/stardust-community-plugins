@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { X, Loader2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Button } from './ui'
 import type { BoardCard } from './types'
 import { PRIORITY_OPTIONS, PRIORITY_LABELS, PRIORITY_COLORS } from './types'
 

@@ -1,7 +1,7 @@
 {
   "id": "board",
   "name": "卡片看板",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "泳道+阶段矩阵式任务看板，支持卡片拖拽、优先级管理、备注功能",
   "icon": "FolderKanban",
   "navOrder": 70,
