@@ -1,6 +1,6 @@
 {
   "name": "gantt",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "甘特图",
   "private": true,
   "main": "lib/index.js",
