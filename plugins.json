@@ -97,8 +97,8 @@
   {
     "id": "drawio",
     "name": "drawio",
-    "version": "1.0.0",
-    "description": "draw.io 图表",
+    "version": "1.0.1",
+    "description": "draw.io 图表编辑器，支持 AI 代理驱动绘图（流程图、架构图、UML、ER 图等）",
     "icon": "Workflow",
     "permissions": [
       "supabase"
@@ -109,7 +109,11 @@
       "lib/index.js",
       "lib/client.js",
       "src/index.ts",
-      "src/client.ts"
+      "src/client.tsx",
+      "DrawioCanvas.tsx",
+      "api.ts",
+      "types.ts",
+      "supabase/drawio.sql"
     ]
   },
   {

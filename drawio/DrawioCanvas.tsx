@@ -6,7 +6,6 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import {
   ArrowLeft, Plus, Loader2, Pencil, X, Save, ChevronDown,
 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import type { DrawioDiagram } from './types'
 import * as api from './api'
 
@@ -425,9 +424,12 @@ export const DrawioCanvas: React.FC<Props> = ({ onBack }) => {
         </div>
 
         {/* 导出 */}
-        <Button variant="outline" size="sm" className="h-7 text-[11px] px-2" onClick={handleExport}>
-          <Save className="h-3 w-3 mr-1" />导出 PNG
-        </Button>
+        <button
+          onClick={handleExport}
+          className="h-7 text-[11px] px-2 rounded-md border border-input bg-background hover:bg-accent flex items-center gap-1 shrink-0"
+        >
+          <Save className="h-3 w-3" />导出 PNG
+        </button>
       </div>
 
       {/* ===== Draw.io iframe ===== */}
