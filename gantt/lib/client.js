@@ -158,7 +158,7 @@ function ToastHost() {
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "fixed top-4 right-4 z-[100] space-y-2", children: queue.map((t, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: `px-3 py-2 rounded-md shadow-lg text-xs ${t.type === "error" ? "bg-destructive text-destructive-foreground" : "bg-card border border-border text-foreground"}`, children: t.msg }, i)) });
 }
 function registerClient(ctx) {
-  const supabase = { getClient: () => ctx.supabase?.getClient?.() || null };
+  const supabase = { getClient: () => ctx.supabase?.getClient?.() || null, isConfigured: () => !!ctx.supabase?.getClient?.() };
   const ui = { toast: showToast };
   const confirm = async (opts) => window.confirm(opts.message) ? opts.actions?.[0]?.key ?? "ok" : opts.actions?.[1]?.key ?? "cancel";
   function getClient() {

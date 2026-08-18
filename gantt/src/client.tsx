@@ -161,7 +161,7 @@ function ToastHost() {
 
 export function registerClient(ctx: any) {
   // 新范式 client ctx：supabase.getClient() 由宿主提供；ui/confirm 用内联实现替代
-  const supabase = { getClient: () => ctx.supabase?.getClient?.() || null }
+  const supabase = { getClient: () => ctx.supabase?.getClient?.() || null, isConfigured: () => !!ctx.supabase?.getClient?.() }
   const ui = { toast: showToast }
   const confirm = async (opts: any) => (window.confirm(opts.message) ? (opts.actions?.[0]?.key ?? 'ok') : (opts.actions?.[1]?.key ?? 'cancel'))
 
